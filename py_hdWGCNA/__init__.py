@@ -1,0 +1,108 @@
+"""
+py-hdWGCNA: Pure-Python re-implementation of R's hdWGCNA package.
+
+A complete WGCNA (Weighted Gene Co-expression Network Analysis) toolkit
+for single-cell RNA-seq data, following the hdWGCNA methodology.
+
+Structure:
+  - hdWGCNA.py: Main HDWGCNA class with pipeline methods
+  - core.py: SetupForWGCNA gene selection
+  - metacells.py: ConstructMetacells
+  - network.py: TestSoftPowers + ConstructNetwork
+  - modules.py: ModuleEigengenes + ModuleConnectivity
+  - analysis.py: DME analysis + module-trait correlation (computation only)
+  - enrichment.py: Enrichr API integration (computation only)
+  - projection.py: ProjectModules + ModulePreservation (computation only)
+  - plotting.py: ALL visualization functions (14 total)
+  - utils.py: Helper functions
+
+Usage:
+    from py_hdWGCNA import HDWGCNA
+
+    hdw = HDWGCNA()
+    hdw.setup_for_wgcna(adata, ...)
+    hdw.test_soft_powers(adata, powers=range(2, 15))
+    hdw.construct_network(adata, soft_power=6)
+    hdw.module_eigengenes(adata)
+"""
+
+__version__ = "0.1.0"
+__author__ = "py-hdWGCNA Team"
+
+from .hdWGCNA import HDWGCNA
+from .core import setup_for_wgcna
+from .metacells import metacells_by_groups, normalize_metacells
+from .network import test_soft_powers, construct_network
+from .modules import module_eigengenes, module_connectivity, reset_module_names
+from .analysis import find_dmes, find_all_dmes, module_trait_correlation
+from .enrichment import run_enrichr, run_enrichr_modules
+from .projection import project_modules, module_preservation
+from .utils import (
+    load_r_outputs,
+    load_test_data,
+    benchmark_compare,
+    format_benchmark_report,
+)
+from .plotting import (
+    plot_soft_powers,
+    module_feature_plot,
+    plot_dendrogram,
+    plot_kmes,
+    module_correlogram,
+    module_network_plot,
+    hub_gene_network_plot,
+    module_umap_plot,
+    compute_module_umap,
+    plot_dmes_volcano,
+    plot_dmes_lollipop,
+    plot_module_trait_correlation,
+    enrichr_bar_plot,
+    enrichr_dot_plot,
+    plot_module_preservation,
+    module_dot_plot,
+    module_radar_plot,
+    mod_color_lookup,
+    generate_all_plots,
+)
+
+__all__ = [
+    'HDWGCNA',
+    'setup_for_wgcna',
+    'metacells_by_groups',
+    'normalize_metacells',
+    'test_soft_powers',
+    'construct_network',
+    'module_eigengenes',
+    'module_connectivity',
+    'reset_module_names',
+    'find_dmes',
+    'find_all_dmes',
+    'module_trait_correlation',
+    'run_enrichr',
+    'run_enrichr_modules',
+    'project_modules',
+    'module_preservation',
+    'load_r_outputs',
+    'load_test_data',
+    'benchmark_compare',
+    'format_benchmark_report',
+    'plot_soft_powers',
+    'module_feature_plot',
+    'plot_dendrogram',
+    'plot_kmes',
+    'module_correlogram',
+    'module_network_plot',
+    'hub_gene_network_plot',
+    'module_umap_plot',
+    'compute_module_umap',
+    'plot_dmes_volcano',
+    'plot_dmes_lollipop',
+    'plot_module_trait_correlation',
+    'enrichr_bar_plot',
+    'enrichr_dot_plot',
+    'plot_module_preservation',
+    'module_dot_plot',
+    'module_radar_plot',
+    'mod_color_lookup',
+    'generate_all_plots',
+]

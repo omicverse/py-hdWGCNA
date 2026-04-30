@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-hdwgcna"
+version = "0.1.0"
+description = "Pure-Python hdWGCNA — weighted gene co-expression network analysis for single-cell data, AnnData-native."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+    { name = "py-hdWGCNA Team" },
+]
+keywords = [
+    "single-cell", "scRNA-seq", "WGCNA", "hdWGCNA",
+    "co-expression", "network", "module", "eigengene",
+    "anndata", "scanpy",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.10",
+    "pandas>=1.5",
+    "anndata>=0.9",
+    "scikit-learn>=1.2",
+    "statsmodels>=0.14",
+    "matplotlib>=3.6",
+    "seaborn>=0.12",
+    "harmonypy>=0.0.9",
+    "requests",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov", "ruff"]
+dtc = ["dynamicTreeCut"]
+umap = ["umap-learn>=0.5"]
+
+[project.urls]
+Repository = "https://github.com/omicverse/py-hdWGCNA"
+Issues = "https://github.com/omicverse/py-hdWGCNA/issues"
+
+[tool.setuptools.packages.find]
+include = ["py_hdWGCNA*"]
+exclude = ["tests*", "examples*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+    "ignore::RuntimeWarning",
+]
