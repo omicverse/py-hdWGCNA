@@ -5,11 +5,9 @@ Shared fixtures for py-hdWGCNA test suite.
 import sys
 import os
 import pytest
-import numpy as np
-import pandas as pd
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 @pytest.fixture(scope="session")
@@ -20,9 +18,9 @@ def test_adata():
     """
     import scanpy as sc
 
-    h5ad_path = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), '..', 'examples', 'test_seurat.h5ad'
-    ))
+    h5ad_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "examples", "test_seurat.h5ad")
+    )
 
     if not os.path.exists(h5ad_path):
         pytest.skip(f"Test data not found: {h5ad_path}")
