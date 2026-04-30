@@ -7,7 +7,7 @@
  | | |
  |---:|:---|
  | **CI/CD** | [![CI](https://github.com/omicverse/py-hdWGCNA/actions/workflows/ci.yml/badge.svg)](https://github.com/omicverse/py-hdWGCNA/actions) ![Python](https://img.shields.io/pypi/pyversions/py-hdWGCNA) |
- | **Package** | [![PyPI](https://img.shields.io/pypi/v/py-hdwgcna?color=blue)](https://pypi.org/project/py-hgWGCNA/) [![Downloads](https://static.pepy.tech/badge/py-hdWGCNA)](https://pepy.tech/project/py-hdWGCNA) |
+ | **Package** | [![PyPI](https://img.shields.io/pypi/v/py-hdwgcna?color=blue)](https://pypi.org/project/py-hdWGCNA/) [![Downloads](https://static.pepy.tech/badge/py-hdWGCNA)](https://pepy.tech/project/py-hdWGCNA) |
  | **Meta** | [![scverse](https://img.shields.io/badge/scverse-ecosystem-orange)](https://scverse.org/packages/#ecosystem) [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE) [![Stars](https://img.shields.io/github/stars/omicverse/py-hdWGCNA?style=social)](https://github.com/omicverse/py-hdWGCNA) |
 
  </div>
