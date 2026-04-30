@@ -6,9 +6,9 @@
 
  | | |
  |---:|:---|
- | **CI/CD** | [![CI](https://github.com/omicverse/py-hdWGCNA/actions/workflows/ci.yml/badge.svg)](https://github.com/omicverse/py-hdWGCNA/actions) ![Python](https://img.shields.io/pypi/pyversions/py-hdWGCNA) |
- | **Package** | [![PyPI](https://img.shields.io/pypi/v/py-hdwgcna?color=blue)](https://pypi.org/project/py-hgWGCNA/) [![Downloads](https://static.pepy.tech/badge/py-hdWGCNA)](https://pepy.tech/project/py-hdWGCNA) |
- | **Meta** | [![scverse](https://img.shields.io/badge/scverse-ecosystem-orange)](https://scverse.org/packages/#ecosystem) [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE) [![Stars](https://img.shields.io/github/stars/omicverse/py-hdWGCNA?style=social)](https://github.com/omicverse/py-hdWGCNA) |
+ | **CI/CD** | [![CI](https://github.com/YOUR_USERNAME/py-hdWGCNA/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/py-hdWGCNA/actions) ![Python](https://img.shields.io/pypi/pyversions/py-hdwgcna) |
+ | **Package** | [![PyPI](https://img.shields.io/pypi/v/py-hdwgcna?color=blue)](https://pypi.org/project/py-hdwgcna/) ![Downloads](https://static.pepy.tech/badge/py-hdwgcna) |
+ | **Meta** | [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE) [![Stars](https://img.shields.io/github/stars/YOUR_USERNAME/py-hdWGCNA?style=social)](https://github.com/YOUR_USERNAME/py-hdWGCNA) |
 
  </div>
 
@@ -23,7 +23,7 @@ A **pure-Python re-implementation of hdWGCNA** (Morabito et al., *Cell Reports M
 - **Numerically faithful to R hdWGCNA** — SFT R^2, kME, and hMEs Pearson r = 1.0000 on benchmark datasets
 - Full pipeline: gene selection, metacell construction, soft-power testing, network construction, module eigengenes, module connectivity, DME analysis, enrichment, and module projection
 
-> This is a **standalone mirror** of the canonical implementation that lives in [`omicverse`](https://github.com/Starlitnightly/omicverse). All algorithmic work is developed upstream in omicverse and synced here for users who want hdWGCNA without the full omicverse stack.
+> This is a **standalone implementation** of hdWGCNA for users who want hdWGCNA without the full omicverse stack.
 
 ## Install
 
@@ -246,17 +246,6 @@ from py_hdWGCNA import (
     plot_module_preservation,
 )
 ```
-
----
-
-## Relationship to omicverse
-
-This package is developed **upstream** in [`omicverse`](https://github.com/Starlitnightly/omicverse):
-
-- Canonical implementation: integrated into the omicverse single-cell analysis framework
-- Standalone mirror (this repo): same code, same API, minus the omicverse registry glue
-
-If you already use omicverse, there is no reason to install this package separately. This repo exists for users who want hdWGCNA without the full omicverse stack.
 
 ---
 
