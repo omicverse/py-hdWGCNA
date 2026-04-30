@@ -15,5 +15,6 @@ htmlcov/
 *.rds
 *.rda
 *.h5ad
-data/
+data/*
+!data/logo.png
 results/
