@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   test:
@@ -33,28 +34,31 @@ jobs:
           pip install ".[dev]"
           pip install scanpy
 
-      - name: Debug info
-        run: |
-          echo "=== Python version ==="
-          python --version
-          echo "=== Installed packages ==="
-          pip list
-          echo "=== Check test data ==="
-          ls -la examples/
-          echo "=== Test import py_hdWGCNA ==="
-          python -c "import py_hdWGCNA; print('py_hdWGCNA imported OK')"
-          echo "=== Test import scanpy ==="
-          python -c "import scanpy; print('scanpy', scanpy.__version__)"
-          echo "=== Test load h5ad ==="
-          python -c "import scanpy as sc; adata = sc.read_h5ad('examples/test_seurat.h5ad'); print('adata shape:', adata.shape)"
-
       - name: Lint with ruff
         run: |
           ruff check py_hdWGCNA tests
           ruff format --check py_hdWGCNA tests
 
       - name: Run tests
-        run: pytest tests/ -v --tb=long --cov=py_hdWGCNA --cov-report=xml --no-header
+        run: |
+          pytest tests/ -v --tb=long --no-header 2>&1 | tee test_output.txt
+          echo "TEST_EXIT_CODE=${PIPESTATUS[0]}" >> $GITHUB_ENV
+
+      - name: Write test summary
+        if: always()
+        run: |
+          echo "## Test Results (Python ${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat test_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Check test result
+        if: always()
+        run: |
+          if [ "$TEST_EXIT_CODE" != "0" ]; then
+            echo "Tests failed with exit code $TEST_EXIT_CODE"
+            exit 1
+          fi
 
       - name: Upload coverage
         if: matrix.python-version == '3.11'
