@@ -15,6 +15,7 @@ htmlcov/
 *.rds
 *.rda
 *.h5ad
+!examples/test_seurat.h5ad
 data/*
 !data/logo.png
 results/
