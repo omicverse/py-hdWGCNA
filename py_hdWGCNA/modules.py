@@ -8,6 +8,34 @@ import numpy as np
 import pandas as pd
 import os
 from anndata import AnnData
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import functools
+
+try:
+    import harmonypy as _harmonypy_mod
+    from sklearn.cluster import MiniBatchKMeans as _MiniBatchKMeans
+    import torch as _torch
+
+    def _fast_init_cluster(self, random_state):
+        _harmonypy_mod.harmony.logger.info("Computing initial centroids with sklearn.KMeans...")
+        Z_cos_np = self._Z_cos.cpu().numpy()
+        if self.K > 30:
+            model = _MiniBatchKMeans(n_clusters=self.K, batch_size=256,
+                                     n_init=1, max_iter=25, random_state=random_state)
+        else:
+            from sklearn.cluster import KMeans
+            model = KMeans(n_clusters=self.K, init='k-means++',
+                           n_init=1, max_iter=25, random_state=random_state)
+        model.fit(Z_cos_np.T)
+        self._Y = _torch.tensor(model.cluster_centers_.T, dtype=_torch.float32, device=self.device)
+        _harmonypy_mod.harmony.logger.info("KMeans initialization complete.")
+        self._Y = self._Y / _torch.linalg.norm(self._Y, ord=2, dim=0)
+        self._R = _torch.zeros((self.K, self.N), dtype=_torch.float32, device=self.device)
+        self._O = _torch.zeros((self.K, self.N), dtype=_torch.float32, device=self.device)
+
+    _harmonypy_mod.harmony.Harmony.init_cluster = _fast_init_cluster
+except Exception:
+    pass
 
 
 def module_eigengenes(
@@ -20,10 +48,9 @@ def module_eigengenes(
     harmonize: bool = True,
     group_by_vars: str | list = None,
     reduction: str = "pca",
-    n_pcs: int = 50,
+    n_pcs: int = 30,
     wgcna_name: str = None,
     n_harmony_runs: int = 1,
-    r_harmony_dir: str = None,
 ):
     from .utils import check_wgcna_name, get_hdWGCNA_data, set_hdWGCNA_data
 
@@ -48,20 +75,21 @@ def module_eigengenes(
         obs_df = adata.obs.copy()
 
     network_genes = modules_df["gene_name"].tolist()
-    common_genes = [g for g in network_genes if g in genes_all]
-    gene_idx_in_expr = [genes_all.index(g) for g in common_genes]
+    genes_set = set(genes_all)
+    common_genes = [g for g in network_genes if g in genes_set]
+    gene_pos = {g: i for i, g in enumerate(genes_all)}
+    gene_idx_in_expr = [gene_pos[g] for g in common_genes]
     expr_mat_subset = expr_mat[gene_idx_in_expr, :]
 
+    mod_map = dict(zip(modules_df["gene_name"], modules_df["module"]))
     module_labels_full = np.zeros(len(common_genes), dtype=int)
     for i, gene in enumerate(common_genes):
-        mod_row = modules_df[modules_df["gene_name"] == gene]
-        if len(mod_row) > 0:
-            mod_str = mod_row["module"].values[0]
-            if mod_str != "grey":
-                try:
-                    module_labels_full[i] = int(mod_str.replace("M", ""))
-                except ValueError:
-                    module_labels_full[i] = 0
+        mod_str = mod_map.get(gene, "grey")
+        if mod_str != "grey":
+            try:
+                module_labels_full[i] = int(mod_str.replace("M", ""))
+            except ValueError:
+                module_labels_full[i] = 0
 
     print(
         "Computing module eigengenes (Seurat-compatible ScaleData + SVD PCA + Harmony)..."
@@ -77,71 +105,46 @@ def module_eigengenes(
     MEs_df = pd.DataFrame(MEs.T, index=cells_use, columns=mod_names)
 
     if harmonize and group_by_vars is not None:
-        if r_harmony_dir is not None and os.path.isdir(r_harmony_dir):
-            print(
-                f"Harmonizing module eigengenes using R harmony results from: {r_harmony_dir}"
-            )
+        print(
+            "Harmonizing module eigengenes (harmonypy, %d run(s))..."
+            % n_harmony_runs
+        )
+        obs_for_harmony = None
+        if isinstance(group_by_vars, str):
+            if group_by_vars in obs_df.columns:
+                obs_for_harmony = obs_df.loc[cells_use]
+        elif isinstance(group_by_vars, list):
+            available = [v for v in group_by_vars if v in obs_df.columns]
+            if available:
+                obs_for_harmony = obs_df.loc[cells_use]
+
+        if obs_for_harmony is not None:
             hME_list = {}
+            harmony_func = _harmony_correct_consensus if n_harmony_runs > 1 else _harmony_correct_single_module
+            harmony_args = []
             for idx_m, col in enumerate(mod_names):
+                mod_key = valid_mods[idx_m]
+                pca_emb = pca_embeddings_dict[mod_key]
+                harmony_args.append((pca_emb, obs_for_harmony, group_by_vars, n_harmony_runs))
+
+            n_workers = min(len(mod_names), os.cpu_count() or 4, 7)
+            if len(mod_names) > 1 and n_workers > 1:
+                hme_results = _parallel_harmony(harmony_func, harmony_args, n_workers)
+            else:
+                hme_results = [harmony_func(*args) for args in harmony_args]
+
+            for idx_m, col in enumerate(mod_names):
+                hme_emb = hme_results[idx_m]
+                hme_pc1 = hme_emb[:, 0]
                 me_pc1 = MEs[idx_m, :]
-                r_harmony_file = os.path.join(r_harmony_dir, f"harmony_{col}.csv")
-                if os.path.exists(r_harmony_file):
-                    r_harm_emb = pd.read_csv(r_harmony_file, index_col=0)
-                    r_harm_cells = r_harm_emb.index.tolist()
-                    common_hc = [c for c in cells_use if c in r_harm_cells]
-                    if len(common_hc) > 0:
-                        r_harm_emb = r_harm_emb.loc[common_hc]
-                        hme_pc1 = r_harm_emb.iloc[:, 0].values.astype(np.float64)
-                        cor_me_hme = np.corrcoef(me_pc1[: len(common_hc)], hme_pc1)[
-                            0, 1
-                        ]
-                        if np.isnan(cor_me_hme) or cor_me_hme < 0:
-                            hme_pc1 = -hme_pc1
-                        hME_list[col] = hme_pc1
-                    else:
-                        hME_list[col] = me_pc1
-                else:
-                    hME_list[col] = me_pc1
+                cor_me_hme = np.corrcoef(me_pc1, hme_pc1)[0, 1]
+                if np.isnan(cor_me_hme) or cor_me_hme < 0:
+                    hme_pc1 = -hme_pc1
+                hME_list[col] = hme_pc1
+
             hMEs_df = pd.DataFrame(hME_list, index=cells_use)
         else:
-            print(
-                "Harmonizing module eigengenes (harmonypy, %d run(s))..."
-                % n_harmony_runs
-            )
-            obs_for_harmony = None
-            if isinstance(group_by_vars, str):
-                if group_by_vars in obs_df.columns:
-                    obs_for_harmony = obs_df.loc[cells_use]
-            elif isinstance(group_by_vars, list):
-                available = [v for v in group_by_vars if v in obs_df.columns]
-                if available:
-                    obs_for_harmony = obs_df.loc[cells_use]
-
-            if obs_for_harmony is not None:
-                n_harmony_pcs = min(30, n_pcs)
-
-                hME_list = {}
-                for idx_m, col in enumerate(mod_names):
-                    mod_key = valid_mods[idx_m]
-                    pca_emb = pca_embeddings_dict[mod_key]
-                    n_available_pcs = pca_emb.shape[1]
-                    pca_emb_use = pca_emb[:, : min(n_harmony_pcs, n_available_pcs)]
-
-                    hme_emb = _harmony_correct_single_module(
-                        pca_emb_use, obs_for_harmony, group_by_vars
-                    )
-
-                    hme_pc1 = hme_emb[:, 0]
-
-                    me_pc1 = MEs[idx_m, :]
-                    cor_me_hme = np.corrcoef(me_pc1, hme_pc1)[0, 1]
-                    if np.isnan(cor_me_hme) or cor_me_hme < 0:
-                        hme_pc1 = -hme_pc1
-                    hME_list[col] = hme_pc1
-
-                hMEs_df = pd.DataFrame(hME_list, index=cells_use)
-            else:
-                hMEs_df = MEs_df.copy()
+            hMEs_df = MEs_df.copy()
     else:
         hMEs_df = MEs_df.copy()
 
@@ -164,7 +167,7 @@ def _compute_mes_seurat_compatible(
     expr_mat: np.ndarray,
     module_labels: np.ndarray,
     exclude_grey: bool = True,
-    n_pcs: int = 50,
+    n_pcs: int = 30,
 ) -> tuple:
     first_appearance_order = []
     seen = set()
@@ -195,46 +198,36 @@ def _compute_mes_seurat_compatible(
 
         n_cells = mod_expr.shape[1]
         n_genes = mod_expr.shape[0]
+
         mod_centered = mod_expr - np.mean(mod_expr, axis=1, keepdims=True)
         mod_std = np.std(mod_expr, axis=1, ddof=1, keepdims=True)
-        mod_std = np.where(mod_std < 1e-10, 1.0, mod_std)
+        mod_std = np.maximum(mod_std, 1e-8)
+
         mod_scaled = mod_centered / mod_std
 
-        clip_val = np.sqrt(n_cells)
+        clip_val = 10.0
         mod_scaled = np.clip(mod_scaled, -clip_val, clip_val)
 
         nan_mask = np.isnan(mod_scaled)
         if nan_mask.any():
             mod_scaled[nan_mask] = 0.0
 
-        actual_npcs = min(n_pcs, n_genes, n_cells)
+        n_genes_filt = mod_scaled.shape[0]
+        actual_npcs = min(n_pcs, n_genes_filt, n_cells)
         if actual_npcs < 1:
             actual_npcs = 1
 
-        try:
-            from scipy.sparse.linalg import svds
-
-            U, s, Vt = svds(mod_scaled.T, k=actual_npcs)
-            sort_idx = np.argsort(s)[::-1]
-            U = U[:, sort_idx]
-            s = s[sort_idx]
-            Vt = Vt[sort_idx, :]
-            pca_emb = U * s[np.newaxis, :]
-        except Exception:
-            from sklearn.decomposition import PCA
-
-            pca = PCA(n_components=actual_npcs)
-            pca_emb = pca.fit_transform(mod_scaled.T)
+        pca_emb = _fast_pca(mod_scaled, actual_npcs, n_genes_filt, n_cells)
 
         me = pca_emb[:, 0]
 
-        avg_expr = np.mean(mod_expr, axis=0)
-        avg_centered = avg_expr - np.mean(avg_expr)
+        aver_expr = np.mean(mod_expr, axis=0)
+        aver_centered = aver_expr - np.mean(aver_expr)
         me_centered = me - np.mean(me)
-        denom = np.sqrt(np.sum(avg_centered**2) + 1e-30) * np.sqrt(
+        denom = np.sqrt(np.sum(aver_centered**2) + 1e-30) * np.sqrt(
             np.sum(me_centered**2) + 1e-30
         )
-        pca_cor = np.sum(avg_centered * me_centered) / denom
+        pca_cor = np.sum(aver_centered * me_centered) / denom
 
         if pca_cor < 0:
             me = -me
@@ -600,71 +593,15 @@ def _get_expr_from_adata(adata: AnnData, layer: str = "data") -> np.ndarray:
     return np.array(mat.T)
 
 
-def _harmony_correct_module(
-    pca_embeddings: np.ndarray,
-    obs_df: pd.DataFrame,
-    group_by_vars: str | list,
-    me_original: np.ndarray,
-    n_runs: int = 1,
-) -> np.ndarray:
-    import harmonypy
-
-    if isinstance(group_by_vars, str):
-        group_by_vars = [group_by_vars]
-
-    meta_data = obs_df[group_by_vars].copy()
-    meta_data.columns = [str(c) for c in meta_data.columns]
-
-    n_groups = len(meta_data.iloc[:, 0].unique())
-    nclust = min(round(pca_embeddings.shape[0] / 30), 100)
-    if nclust < n_groups:
-        nclust = n_groups
-
-    try:
-        ho = harmonypy.run_harmony(
-            pca_embeddings,
-            meta_data,
-            group_by_vars,
-            max_iter_harmony=10,
-            max_iter_kmeans=20,
-            epsilon_harmony=1e-4,
-            epsilon_cluster=1e-5,
-            nclust=nclust,
-            random_state=42,
-        )
-        return ho.Z_corr
-    except Exception:
-        me_2d = me_original.reshape(-1, 1) if me_original.ndim == 1 else me_original
-        n_cells = me_2d.shape[0]
-        design_cols = []
-        for gvar in group_by_vars:
-            batches = meta_data[gvar].astype("category")
-            n_batch = batches.nunique()
-            design = np.zeros((n_cells, n_batch))
-            codes = batches.cat.codes.values
-            for k in range(n_batch):
-                design[:, k] = (codes == k).astype(float)
-            design_cols.append(design)
-        batch_design = (
-            np.hstack(design_cols) if len(design_cols) > 1 else design_cols[0]
-        )
-        from numpy.linalg import lstsq
-
-        coeffs, _, _, _ = lstsq(batch_design, me_2d, rcond=None)
-        best_emb = me_2d - batch_design @ coeffs + np.mean(me_2d, axis=0)
-        print("  harmonypy failed, used linear regression fallback")
-        return best_emb
-
-
 def _harmony_correct_single_module(
     pca_embeddings: np.ndarray,
     obs_df: pd.DataFrame,
     group_by_vars: str | list,
-    max_iter_harmony: int = 10,
-    max_iter_kmeans: int = 20,
+    max_iter_harmony: int = 5,
+    max_iter_kmeans: int = 5,
     epsilon_harmony: float = 1e-4,
     epsilon_cluster: float = 1e-5,
-    random_state: int = 42,
+    random_state: int = 0,
 ) -> np.ndarray:
     try:
         import harmonypy
@@ -676,7 +613,7 @@ def _harmony_correct_single_module(
         meta_data.columns = [str(c) for c in meta_data.columns]
 
         n_groups = len(meta_data.iloc[:, 0].unique())
-        nclust = min(round(pca_embeddings.shape[0] / 30), 100)
+        nclust = min(round(pca_embeddings.shape[0] / 10), 100)
         if nclust < n_groups:
             nclust = n_groups
 
@@ -697,3 +634,83 @@ def _harmony_correct_single_module(
     except Exception as e:
         print(f"  harmonypy failed for module: {e}, using uncorrected PCA")
         return pca_embeddings
+
+
+def _harmony_correct_consensus(
+    pca_embeddings: np.ndarray,
+    obs_df: pd.DataFrame,
+    group_by_vars: str | list,
+    n_runs: int = 5,
+    max_iter_harmony: int = 5,
+    max_iter_kmeans: int = 10,
+    epsilon_harmony: float = 1e-4,
+    epsilon_cluster: float = 1e-5,
+) -> np.ndarray:
+    results = []
+    for seed in range(n_runs):
+        hme_emb = _harmony_correct_single_module(
+            pca_embeddings, obs_df, group_by_vars,
+            max_iter_harmony=max_iter_harmony,
+            max_iter_kmeans=max_iter_kmeans,
+            epsilon_harmony=epsilon_harmony,
+            epsilon_cluster=epsilon_cluster,
+            random_state=seed,
+        )
+        results.append(hme_emb)
+
+    return np.mean(results, axis=0)
+
+
+def _fast_pca(
+    mod_scaled: np.ndarray,
+    n_pcs: int,
+    n_genes: int,
+    n_cells: int,
+) -> np.ndarray:
+    data = mod_scaled.T.astype(np.float64, copy=False)
+
+    if n_genes <= 500 and n_cells <= 5000:
+        U, s, Vt = np.linalg.svd(data, full_matrices=False)
+        return U[:, :n_pcs] * s[np.newaxis, :n_pcs]
+
+    if n_pcs >= min(n_genes, n_cells):
+        U, s, Vt = np.linalg.svd(data, full_matrices=False)
+        return U[:, :n_pcs] * s[np.newaxis, :n_pcs]
+
+    try:
+        from scipy.sparse.linalg import svds
+        k = min(n_pcs, min(data.shape) - 1)
+        U, s, Vt = svds(data, k=k)
+        sort_idx = np.argsort(s)[::-1]
+        U = U[:, sort_idx]
+        s = s[sort_idx]
+        return U * s[np.newaxis, :]
+    except Exception:
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=n_pcs)
+        return pca.fit_transform(data)
+
+
+def _parallel_harmony(harmony_func, args_list, n_workers):
+    results = [None] * len(args_list)
+
+    def _run_single(args):
+        pca_emb, obs_df, group_by_vars, n_runs = args
+        if n_runs > 1:
+            return _harmony_correct_consensus(
+                pca_emb, obs_df, group_by_vars, n_runs=n_runs,
+            )
+        else:
+            return _harmony_correct_single_module(
+                pca_emb, obs_df, group_by_vars,
+            )
+
+    try:
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            futures = [executor.submit(_run_single, args) for args in args_list]
+            for i, future in enumerate(futures):
+                results[i] = future.result()
+    except Exception:
+        results = [_run_single(args) for args in args_list]
+
+    return results

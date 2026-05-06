@@ -160,7 +160,7 @@ def construct_network(
     network_type: str = "signed",
     tom_type: str = "signed",
     tom_denom: str = "min",
-    minModuleSize: int = 50,
+    minModuleSize: int = 20,
     deepSplit: int = 4,
     pamRespectsDendro: bool = True,
     pamStage: bool = False,
@@ -716,10 +716,9 @@ def _generate_module_colors(unique_labels: np.ndarray) -> dict:
 
     for lbl in sorted_labels:
         if color_idx < len(wgcna_color_names):
-            color_name = wgcna_color_names[color_idx]
-            color_map[lbl] = wgcna_hex_map.get(color_name, color_name)
+            color_map[lbl] = wgcna_color_names[color_idx]
         else:
-            color_map[lbl] = "#888888"
+            color_map[lbl] = "grey"
         color_idx += 1
 
     return color_map

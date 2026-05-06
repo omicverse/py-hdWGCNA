@@ -18,3 +18,13 @@ htmlcov/
 data/*
 !data/logo.png
 results/
+*.png
+*.pdf
+*.svg
+*.eps
+*.jpeg
+*.tiff
+*.bmp
+py_hdWGCNA/.jaspar_tfs_cache.json
+py_hdWGCNA/.enrichr_*_cache.json
+tf_output/

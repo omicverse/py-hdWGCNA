@@ -70,6 +70,10 @@ def metacells_by_groups(
 
         group_coords = coords[group_idx].copy()
 
+        cur_target = target_metacells
+        if cur_target is None:
+            cur_target = max(n_cells_in_group // k, 1)
+
         if n_cells_in_group <= k:
             print(
                 f"  Only {n_cells_in_group} cells (<= k={k}), creating single metacell"
@@ -77,7 +81,7 @@ def metacells_by_groups(
             chosen = list(range(n_cells_in_group))
         else:
             chosen = _bootstrap_metacells(
-                group_coords, k, max_shared, target_metacells, max_iter
+                group_coords, k, max_shared, cur_target, max_iter
             )
 
         if len(chosen) <= 1:
@@ -86,22 +90,22 @@ def metacells_by_groups(
 
         nn_map = _compute_knn_index(group_coords, k)
 
-        cell_sample = nn_map[chosen, :]
-
         if "counts" in adata.layers:
             counts_mat = adata.layers["counts"]
         else:
             counts_mat = adata.X
         if hasattr(counts_mat, "toarray"):
             counts_mat = counts_mat.toarray()
-        counts_mat = np.array(counts_mat, dtype=np.float64)
+        counts_mat = np.asarray(counts_mat, dtype=np.float64)
 
         n_metacells = len(chosen)
 
         mc_counts = np.zeros((n_metacells, counts_mat.shape[1]), dtype=np.float64)
 
-        mc_expr_list = []
+        cell_sample = nn_map[chosen, :]
+
         mc_obs_list = []
+        metacell_names = []
 
         for mc_i in range(n_metacells):
             members_local = cell_sample[mc_i, :]
@@ -109,8 +113,6 @@ def metacells_by_groups(
             original_cell_indices = group_idx[members_local]
 
             mc_counts[mc_i, :] = counts_mat[original_cell_indices, :].sum(axis=0) / k
-
-            mc_expr_list.append(mc_counts[mc_i, :])
 
             obs_row = {
                 "__groups__": group_val,
@@ -128,8 +130,8 @@ def metacells_by_groups(
             metacell_name = f"{group_val}_{mc_i + 1}"
             metacell_to_cell_map[metacell_name] = original_cell_indices.tolist()
 
-        if len(mc_expr_list) > 0:
-            all_metacell_exprs.append(np.vstack(mc_expr_list))
+        if n_metacells > 0:
+            all_metacell_exprs.append(mc_counts)
             all_metacell_obs.extend(mc_obs_list)
 
     if len(all_metacell_exprs) == 0:
@@ -211,7 +213,7 @@ def _compute_knn_index(coords: np.ndarray, k: int) -> np.ndarray:
         return nn_map
 
     knn = NearestNeighbors(
-        n_neighbors=n_neighbors, metric="euclidean", algorithm="auto"
+        n_neighbors=n_neighbors, metric="euclidean", algorithm="ball_tree"
     )
     knn.fit(coords)
     _, indices = knn.kneighbors(coords)
@@ -231,15 +233,13 @@ def _bootstrap_metacells(
 
     nn_map = _compute_knn_index(coords, k)
 
-    _good_choices = np.arange(n_cells, dtype=np.int64)
     good_mask = np.ones(n_cells, dtype=bool)
     chosen = []
     it = 0
-    k2 = k * 2
 
     rng = np.random.default_rng()
 
-    chosen_cell_sets = []
+    chosen_nn = np.empty((0, nn_map.shape[1]), dtype=np.int64)
 
     while good_mask.any() and len(chosen) < target_metacells and it < max_iter:
         it += 1
@@ -248,17 +248,19 @@ def _bootstrap_metacells(
         choice_idx = rng.integers(0, len(available))
         new_center = available[choice_idx]
 
-        new_cell_set = set(nn_map[new_center, :].tolist())
+        new_nn = nn_map[new_center, :]
 
         if len(chosen) == 0:
             chosen.append(int(new_center))
-            chosen_cell_sets.append(new_cell_set)
+            chosen_nn = new_nn.reshape(1, -1)
             good_mask[new_center] = False
             continue
 
+        new_nn_set = set(new_nn.tolist())
         max_shared_found = 0
-        for existing_set in chosen_cell_sets:
-            shared = k2 - len(existing_set | new_cell_set)
+        for row_idx in range(chosen_nn.shape[0]):
+            existing_set = set(chosen_nn[row_idx].tolist())
+            shared = len(existing_set & new_nn_set)
             if shared > max_shared_found:
                 max_shared_found = shared
                 if max_shared_found > max_shared:
@@ -266,7 +268,7 @@ def _bootstrap_metacells(
 
         if max_shared_found <= max_shared:
             chosen.append(int(new_center))
-            chosen_cell_sets.append(new_cell_set)
+            chosen_nn = np.vstack([chosen_nn, new_nn.reshape(1, -1)])
 
         good_mask[new_center] = False
 

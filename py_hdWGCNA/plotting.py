@@ -3664,3 +3664,728 @@ def generate_all_plots(
 
     print(f"\nGenerated {len(generated)} plots in {output_dir}")
     return generated
+
+
+def module_corr_network(
+    adata: AnnData,
+    cluster_col: str = None,
+    exclude_grey: bool = True,
+    features: str = "hMEs",
+    reduction: str = "X_umap",
+    cor_cutoff: float = 0.2,
+    label_vertices: bool = False,
+    edge_scale: float = 5,
+    vertex_size: float = 15,
+    wgcna_name: str = None,
+    save_path: str = None,
+):
+    """
+    Plot module eigengene correlation network.
+
+    Replicates R's ModuleCorrNetwork function.
+
+    Parameters
+    ----------
+    adata : AnnData
+    cluster_col : str
+        Column in obs for cluster grouping
+    exclude_grey : bool
+    features : str
+        'hMEs', 'MEs', 'scores', or 'average'
+    reduction : str
+        Reduction key in adata.obsm
+    cor_cutoff : float
+        Minimum correlation for edges
+    label_vertices : bool
+    edge_scale : float
+    vertex_size : float
+    wgcna_name : str
+    save_path : str
+    """
+    wd = _get_wd(adata, wgcna_name)
+
+    me_key_map = {"hMEs": "hMEs", "MEs": "MEs", "scores": "module_scores", "average": "avg_module_expr"}
+    me_key = me_key_map.get(features, "hMEs")
+    MEs = wd.get(me_key)
+    if MEs is None:
+        raise ValueError(f"No {features} found.")
+
+    modules_df = wd.get("modules_df")
+    if modules_df is None:
+        raise ValueError("No module data found.")
+
+    if isinstance(MEs, np.ndarray):
+        mod_names = wd.get("module_names", [f"M{i}" for i in range(MEs.shape[1])])
+        MEs = pd.DataFrame(MEs, columns=mod_names, index=adata.obs_names)
+
+    if exclude_grey:
+        grey_cols = [c for c in MEs.columns if c == "grey"]
+        if grey_cols:
+            MEs = MEs.drop(columns=grey_cols)
+        modules_df = modules_df[modules_df["module"] != "grey"]
+
+    mods = list(MEs.columns)
+
+    if cluster_col is not None and cluster_col in adata.obs.columns:
+        clusters = adata.obs[cluster_col]
+    else:
+        clusters = pd.Series(["all"] * adata.n_obs, index=adata.obs_names)
+
+    MEs_copy = MEs.copy()
+    MEs_copy["cluster"] = clusters.values
+    cluster_me_av = MEs_copy.groupby("cluster")[mods].mean()
+
+    top_clusters = {}
+    for m in mods:
+        if m in cluster_me_av.columns:
+            top_clusters[m] = cluster_me_av[m].idxmax()
+        else:
+            top_clusters[m] = "all"
+
+    red_key = reduction if reduction in adata.obsm else f"X_{reduction}"
+    if red_key in adata.obsm:
+        red_df = pd.DataFrame(adata.obsm[red_key][:, :2], index=adata.obs_names, columns=["x", "y"])
+        red_df["cluster"] = clusters.values
+        red_av = red_df.groupby("cluster")[["x", "y"]].mean()
+    else:
+        red_av = None
+
+    cor_mat = MEs[mods].corr().values
+    np.fill_diagonal(cor_mat, 0)
+
+    edges = []
+    for i in range(len(mods)):
+        for j in range(i + 1, len(mods)):
+            if abs(cor_mat[i, j]) >= cor_cutoff:
+                edges.append((mods[i], mods[j], cor_mat[i, j]))
+
+    unique_mods = modules_df[["module", "color"]].drop_duplicates()
+    mod_color_dict = dict(zip(unique_mods["module"], unique_mods["color"]))
+
+    _setup_publication_style()
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
+
+    if red_av is not None:
+        pos = {}
+        for m in mods:
+            tc = top_clusters.get(m, "all")
+            if tc in red_av.index:
+                pos[m] = (red_av.loc[tc, "x"], red_av.loc[tc, "y"])
+            else:
+                pos[m] = (np.random.randn(), np.random.randn())
+    else:
+        theta = np.linspace(0, 2 * np.pi, len(mods), endpoint=False)
+        pos = {m: (np.cos(t), np.sin(t)) for m, t in zip(mods, theta)}
+
+    for e1, e2, w in edges:
+        x_vals = [pos[e1][0], pos[e2][0]]
+        y_vals = [pos[e1][1], pos[e2][1]]
+        color = "darkorchid" if w > 0 else "seagreen"
+        ax.plot(x_vals, y_vals, color=color, alpha=min(abs(w), 1.0), linewidth=abs(w) * edge_scale, zorder=1)
+
+    for m in mods:
+        c = _to_mpl_color(mod_color_dict.get(m, "blue"))
+        ax.scatter(pos[m][0], pos[m][1], s=vertex_size**2, c=[c], edgecolors="black", linewidths=0.5, zorder=2)
+        if label_vertices:
+            ax.annotate(m, pos[m], fontsize=6, ha="center", va="center", color="black", fontweight="bold")
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.tight_layout(pad=0.02)
+
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+    return fig
+
+
+def overlap_dot_plot(
+    overlap_df: pd.DataFrame,
+    plot_var: str = "odds_ratio",
+    logscale: bool = True,
+    neglog: bool = False,
+    plot_significance: bool = True,
+    save_path: str = None,
+):
+    """
+    Dot plot for module-DEG overlap results.
+
+    Replicates R's OverlapDotPlot function.
+
+    Parameters
+    ----------
+    overlap_df : DataFrame
+        Output from overlap_modules_degs
+    plot_var : str
+        Variable to plot ('odds_ratio', 'fdr', 'Jaccard')
+    logscale : bool
+    neglog : bool
+    plot_significance : bool
+    save_path : str
+    """
+    df = overlap_df.copy()
+    label = plot_var
+    if logscale:
+        df[plot_var] = np.log(df[plot_var].clip(lower=1e-300))
+        label = f"log({plot_var})"
+    if neglog:
+        df[plot_var] = -1 * df[plot_var]
+        label = f"-{label}"
+
+    _setup_publication_style()
+    fig, ax = plt.subplots(figsize=(max(4, len(df["module"].unique()) * 0.5), max(3, len(df["group"].unique()) * 0.5)), dpi=300)
+
+    x_labels = df["module"].unique()
+    y_labels = df["group"].unique()
+    x_map = {m: i for i, m in enumerate(x_labels)}
+    y_map = {g: i for i, g in enumerate(y_labels)}
+
+    for _, row in df.iterrows():
+        xi = x_map[row["module"]]
+        yi = y_map[row["group"]]
+        val = row[plot_var]
+        color = _to_mpl_color(row.get("color", "blue"))
+        size = max(abs(val) * 30, 10)
+        ax.scatter(xi, yi, s=size, c=[color], alpha=min(abs(val) / max(abs(df[plot_var].max()), 1e-10), 1.0), edgecolors="none", zorder=2)
+        if plot_significance and "Significance" in row.index and row["Significance"]:
+            ax.annotate(row["Significance"], (xi, yi), fontsize=7, ha="center", va="bottom", color="black")
+
+    ax.set_xticks(range(len(x_labels)))
+    ax.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=8)
+    ax.set_yticks(range(len(y_labels)))
+    ax.set_yticklabels(y_labels, fontsize=8)
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.set_title(label, fontsize=10)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(0.5)
+    fig.tight_layout(pad=0.02)
+
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+    return fig
+
+
+def overlap_bar_plot(
+    overlap_df: pd.DataFrame,
+    plot_var: str = "odds_ratio",
+    logscale: bool = False,
+    neglog: bool = False,
+    label_size: int = 6,
+    save_path: str = None,
+):
+    """
+    Bar plot for module-DEG overlap results.
+
+    Replicates R's OverlapBarPlot function.
+
+    Parameters
+    ----------
+    overlap_df : DataFrame
+        Output from overlap_modules_degs
+    plot_var : str
+    logscale : bool
+    neglog : bool
+    label_size : int
+    save_path : str
+    """
+    df = overlap_df.copy()
+    label = plot_var
+
+    if plot_var == "odds_ratio":
+        yint = 1
+    elif plot_var == "fdr":
+        yint = 0.05
+    else:
+        yint = None
+
+    if logscale:
+        df[plot_var] = np.log(df[plot_var].clip(lower=1e-300))
+        label = f"log({plot_var})"
+        if yint is not None:
+            yint = np.log(yint)
+    if neglog:
+        df[plot_var] = -1 * df[plot_var]
+        label = f"-{label}"
+        if yint is not None:
+            yint = -np.log(yint)
+
+    groups = df["group"].unique()
+    plot_list = {}
+    for cur_group in groups:
+        cur_df = df[df["group"] == cur_group].sort_values(plot_var)
+        if len(cur_df) == 0:
+            continue
+
+        _setup_publication_style()
+        fig, ax = plt.subplots(figsize=(4, max(2, len(cur_df) * 0.3)), dpi=300)
+
+        y_pos = range(len(cur_df))
+        colors = [_to_mpl_color(c) for c in cur_df["color"]]
+        ax.barh(y_pos, cur_df[plot_var].values, color=colors, height=0.7)
+
+        ax.set_yticks([])
+        ax.set_xlabel(label, fontsize=9)
+        ax.set_title(str(cur_group), fontsize=10)
+
+        if yint is not None:
+            ax.axvline(x=yint, color="gray", linestyle="--", linewidth=0.5)
+
+        for i, (_, row) in enumerate(cur_df.iterrows()):
+            val = row[plot_var]
+            ha = "left" if val >= 0 else "right"
+            offset = 0.01 * abs(val) if val != 0 else 0.01
+            ax.text(val + offset if val >= 0 else val - offset, i, row["module"], fontsize=label_size, va="center", ha=ha, color="black")
+
+        fig.tight_layout(pad=0.02)
+        plot_list[str(cur_group)] = fig
+
+    if save_path and len(plot_list) == 1:
+        list(plot_list.values())[0].savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+
+    return plot_list
+
+
+def motif_overlap_bar_plot(
+    adata: AnnData,
+    n_tfs: int = 10,
+    module_names: list = None,
+    wgcna_name: str = None,
+    save_path: str = None,
+):
+    """
+    Bar plot of top TFs in modules based on motif overlap.
+
+    Replicates R's MotifOverlapBarPlot function.
+
+    Parameters
+    ----------
+    adata : AnnData
+    n_tfs : int
+    module_names : list
+    wgcna_name : str
+    save_path : str
+    """
+    wd = _get_wd(adata, wgcna_name)
+    modules_df = wd.get("modules_df")
+    overlap_df = wd.get("motif_overlap")
+
+    if overlap_df is None:
+        raise ValueError("No motif overlap data found. Run overlap_modules_motifs first.")
+
+    mods = sorted(modules_df["module"].unique())
+    mods = [m for m in mods if m != "grey"]
+    if module_names is not None:
+        mods = [m for m in mods if m in module_names]
+
+    unique_mods = modules_df[["module", "color"]].drop_duplicates()
+    mod_color_dict = dict(zip(unique_mods["module"], unique_mods["color"]))
+
+    plot_list = {}
+    for cur_mod in mods:
+        cur_df = overlap_df[overlap_df["module"] == cur_mod].copy()
+        if len(cur_df) == 0:
+            continue
+        cur_df = cur_df.nlargest(n_tfs, "odds_ratio")
+
+        _setup_publication_style()
+        fig, ax = plt.subplots(figsize=(5, max(2, len(cur_df) * 0.35)), dpi=300)
+
+        y_pos = range(len(cur_df))
+        mod_color = _to_mpl_color(mod_color_dict.get(cur_mod, "blue"))
+        colors = [mod_color if o > 0 else "grey90" for o in cur_df["odds_ratio"]]
+        ax.barh(y_pos, cur_df["odds_ratio"].values, color=colors, height=0.7)
+
+        ax.set_yticks(range(len(cur_df)))
+        ax.set_yticklabels(cur_df["tf"].values, fontsize=7)
+        ax.set_xlabel("Odds Ratio", fontsize=9)
+        ax.set_title(cur_mod, fontsize=10)
+        fig.tight_layout(pad=0.02)
+        plot_list[cur_mod] = fig
+
+    if save_path and len(plot_list) == 1:
+        list(plot_list.values())[0].savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+
+    return plot_list
+
+
+def do_hub_gene_heatmap(
+    adata: AnnData,
+    n_hubs: int = 10,
+    n_cells: int = 200,
+    group_by: str = None,
+    module_names: list = None,
+    wgcna_name: str = None,
+    save_path: str = None,
+):
+    """
+    Heatmap of hub gene expression across cell groups.
+
+    Replicates R's DoHubGeneHeatmap function.
+
+    Parameters
+    ----------
+    adata : AnnData
+    n_hubs : int
+    n_cells : int
+    group_by : str
+    module_names : list
+    wgcna_name : str
+    save_path : str
+    """
+    wd = _get_wd(adata, wgcna_name)
+    modules_df = wd.get("modules_df")
+    if modules_df is None:
+        raise ValueError("No module data found.")
+
+    modules_df = modules_df[modules_df["module"] != "grey"].copy()
+    mods = sorted(modules_df["module"].unique())
+    if module_names is not None:
+        mods = [m for m in mods if m in module_names]
+        modules_df = modules_df[modules_df["module"].isin(mods)]
+
+    if group_by is None:
+        if "cell_type" in adata.obs.columns:
+            group_by = "cell_type"
+        elif "seurat_clusters" in adata.obs.columns:
+            group_by = "seurat_clusters"
+        else:
+            group_by = adata.obs.columns[0]
+
+    hub_list = {}
+    for cur_mod in mods:
+        cur_df = modules_df[modules_df["module"] == cur_mod]
+        kme_col = f"kME_{cur_mod}"
+        if kme_col in cur_df.columns:
+            cur_df = cur_df.nlargest(n_hubs, kme_col)
+        else:
+            cur_df = cur_df.head(n_hubs)
+        hub_list[cur_mod] = cur_df["gene_name"].tolist()
+
+    from scipy.sparse import issparse
+    if issparse(adata.X):
+        expr = adata.X.toarray()
+    else:
+        expr = adata.X.copy()
+
+    groups = adata.obs[group_by]
+    sampled_indices = []
+    for g in groups.unique():
+        g_idx = np.where(groups == g)[0]
+        if len(g_idx) > n_cells:
+            rng = np.random.RandomState(42)
+            g_idx = rng.choice(g_idx, size=n_cells, replace=False)
+        sampled_indices.extend(g_idx)
+    sampled_indices = sorted(set(sampled_indices))
+
+    gene_names = list(adata.var_names)
+    group_labels = groups.iloc[sampled_indices].values
+
+    sort_idx = np.argsort(group_labels)
+    sampled_indices = [sampled_indices[i] for i in sort_idx]
+    group_labels = group_labels[sort_idx]
+
+    _setup_publication_style()
+    n_mods = len(mods)
+    fig, axes = plt.subplots(n_mods, 1, figsize=(8, 2 * n_mods), dpi=300)
+    if n_mods == 1:
+        axes = [axes]
+
+    unique_mods = modules_df[["module", "color"]].drop_duplicates()
+    mod_color_dict = dict(zip(unique_mods["module"], unique_mods["color"]))
+
+    for ax_idx, cur_mod in enumerate(mods):
+        ax = axes[ax_idx]
+        cur_genes = hub_list[cur_mod]
+        feature_indices = [gene_names.index(g) for g in cur_genes if g in gene_names]
+        if len(feature_indices) == 0:
+            ax.axis("off")
+            continue
+
+        sub_expr = expr[sampled_indices, :][:, feature_indices].T
+        sub_expr = np.clip(sub_expr, -2.5, 2.5)
+
+        im = ax.imshow(sub_expr, aspect="auto", cmap="RdBu_r", vmin=-2.5, vmax=2.5, interpolation="nearest")
+        ax.set_yticks(range(len(cur_genes)))
+        ax.set_yticklabels(cur_genes, fontsize=5, fontstyle="italic")
+        ax.set_xticks([])
+        ax.set_ylabel(cur_mod, fontsize=8, color=_to_mpl_color(mod_color_dict.get(cur_mod, "black")), fontweight="bold")
+
+    fig.tight_layout(pad=0.02, h_pad=0.5)
+
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+    return fig
+
+
+def module_topology_heatmap(
+    adata: AnnData,
+    mod: str,
+    matrix: str = "TOM",
+    order_by: str = "kME",
+    high_color: str = None,
+    low_color: str = "white",
+    plot_max="q99",
+    plot_min=0,
+    wgcna_name: str = None,
+    save_path: str = None,
+):
+    """
+    Triangular heatmap of module network topology.
+
+    Replicates R's ModuleTopologyHeatmap function.
+
+    Parameters
+    ----------
+    adata : AnnData
+    mod : str
+        Module name
+    matrix : str
+        'TOM' or 'Cor'
+    order_by : str
+        'kME' or 'degree'
+    high_color : str
+    low_color : str
+    plot_max : str or float
+    plot_min : str, float, or int
+    wgcna_name : str
+    save_path : str
+    """
+    wd = _get_wd(adata, wgcna_name)
+    modules_df = wd.get("modules_df")
+    if modules_df is None:
+        raise ValueError("No module data found.")
+
+    cur_genes_df = modules_df[modules_df["module"] == mod]
+    if len(cur_genes_df) == 0:
+        raise ValueError(f"Module {mod} not found.")
+
+    cur_genes = cur_genes_df["gene_name"].tolist()
+    mod_color = cur_genes_df["color"].iloc[0] if "color" in cur_genes_df.columns else "blue"
+    if high_color is None:
+        high_color = mod_color
+
+    if order_by == "kME":
+        kme_col = f"kME_{mod}"
+        if kme_col in cur_genes_df.columns:
+            cur_genes_df = cur_genes_df.sort_values(kme_col, ascending=False)
+            cur_genes = cur_genes_df["gene_name"].tolist()
+    elif order_by == "degree":
+        degrees = wd.get("degrees")
+        if degrees is not None and "degree" in degrees.columns:
+            cur_deg = degrees[degrees["module"] == mod].sort_values("degree", ascending=False)
+            cur_genes = cur_deg["gene_name"].tolist()
+
+    if matrix == "TOM":
+        tom_mat, tom_genes = _get_tom_similarity(wd)
+        if tom_mat is None:
+            raise ValueError("TOM not found.")
+        gene_idx = [tom_genes.index(g) for g in cur_genes if g in tom_genes]
+        cur_genes = [tom_genes[i] for i in gene_idx]
+        mat = tom_mat[np.ix_(gene_idx, gene_idx)]
+    elif matrix == "Cor":
+        from scipy.sparse import issparse
+        if issparse(adata.X):
+            expr = adata.X.toarray()
+        else:
+            expr = adata.X.copy()
+        gene_names = list(adata.var_names)
+        gene_idx = [gene_names.index(g) for g in cur_genes if g in gene_names]
+        cur_genes = [gene_names[i] for i in gene_idx]
+        sub_expr = expr[:, gene_idx]
+        mat = np.corrcoef(sub_expr.T)
+    else:
+        raise ValueError("matrix must be 'TOM' or 'Cor'")
+
+    mat[np.tril_indices(mat.shape[0])] = 0
+    n = len(cur_genes)
+
+    if isinstance(plot_max, str) and plot_max.startswith("q"):
+        q = int(plot_max[1:]) / 100.0
+        plot_max = np.quantile(mat[mat > 0], q) if np.any(mat > 0) else 1.0
+    if isinstance(plot_min, str) and plot_min.startswith("q"):
+        q = int(plot_min[1:]) / 100.0
+        plot_min = np.quantile(mat[mat > 0], q) if np.any(mat > 0) else 0.0
+
+    mat = np.clip(mat, plot_min, plot_max)
+
+    _setup_publication_style()
+    fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
+    cmap = LinearSegmentedColormap.from_list("custom", [low_color, high_color])
+    im = ax.imshow(mat, cmap=cmap, vmin=plot_min, vmax=plot_max, aspect="equal", interpolation="nearest")
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    cbar = fig.colorbar(im, ax=ax, shrink=0.6, label=matrix)
+    cbar.ax.tick_params(labelsize=7)
+    fig.tight_layout(pad=0.02)
+
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+    return fig
+
+
+def module_topology_barplot(
+    adata: AnnData,
+    mod: str,
+    features: str = "kME",
+    plot_color: str = None,
+    alpha: bool = True,
+    wgcna_name: str = None,
+    save_path: str = None,
+):
+    """
+    Ranked barplot of intramodular connectivity.
+
+    Replicates R's ModuleTopologyBarplot function.
+
+    Parameters
+    ----------
+    adata : AnnData
+    mod : str
+        Module name
+    features : str
+        'kME', 'degree', or 'weighted_degree'
+    plot_color : str
+    alpha : bool
+    wgcna_name : str
+    save_path : str
+    """
+    wd = _get_wd(adata, wgcna_name)
+    modules_df = wd.get("modules_df")
+    if modules_df is None:
+        raise ValueError("No module data found.")
+
+    cur_genes_df = modules_df[modules_df["module"] == mod]
+    if len(cur_genes_df) == 0:
+        raise ValueError(f"Module {mod} not found.")
+
+    mod_color = cur_genes_df["color"].iloc[0] if "color" in cur_genes_df.columns else "blue"
+    if plot_color is None:
+        plot_color = _to_mpl_color(mod_color)
+
+    if features == "kME":
+        kme_col = f"kME_{mod}"
+        if kme_col in cur_genes_df.columns:
+            plot_df = cur_genes_df[["gene_name", kme_col]].rename(columns={kme_col: "value"})
+            plot_df = plot_df.sort_values("value", ascending=False)
+            label = "kME"
+            plot_limits = (-1, 1)
+        else:
+            raise ValueError(f"kME column {kme_col} not found.")
+    elif features in ("degree", "weighted_degree"):
+        degrees = wd.get("degrees")
+        if degrees is None:
+            raise ValueError("Degree data not found. Run ModuleConnectivity with TOM first.")
+        plot_df = degrees[degrees["module"] == mod][["gene_name", features]].rename(columns={features: "value"})
+        plot_df = plot_df.sort_values("value", ascending=False)
+        label = "Degree"
+        plot_limits = (0, plot_df["value"].max() if len(plot_df) > 0 else 1)
+    else:
+        raise ValueError("features must be 'kME', 'degree', or 'weighted_degree'")
+
+    _setup_publication_style()
+    fig, ax = plt.subplots(figsize=(max(4, len(plot_df) * 0.02), 2), dpi=300)
+
+    x_pos = range(len(plot_df))
+    values = plot_df["value"].values
+    if alpha:
+        alphas = np.clip(np.abs(values) / max(np.abs(values).max(), 1e-10), 0.1, 1.0)
+        for i, (x, v, a) in enumerate(zip(x_pos, values, alphas)):
+            ax.bar(x, v, width=1, color=plot_color, alpha=a, edgecolor="none")
+    else:
+        ax.bar(x_pos, values, width=1, color=plot_color, edgecolor="none")
+
+    ax.set_xlim(-0.5, len(plot_df) - 0.5)
+    ax.set_ylim(plot_limits)
+    ax.set_xticks([])
+    ax.set_ylabel(label, fontsize=9)
+    ax.set_xlabel("")
+    fig.tight_layout(pad=0.02)
+
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+    return fig
+
+
+def plot_module_preservation_lollipop(
+    adata: AnnData,
+    preservation_name: str,
+    features: str = None,
+    fdr: bool = True,
+    wgcna_name: str = None,
+    save_path: str = None,
+):
+    """
+    Lollipop plot for module preservation statistics.
+
+    Replicates R's PlotModulePreservationLollipop function.
+
+    Parameters
+    ----------
+    adata : AnnData
+    preservation_name : str
+        Name of the module preservation analysis
+    features : str
+        Feature to plot (default: Zsummary.pres)
+    fdr : bool
+    wgcna_name : str
+    save_path : str
+    """
+    wd = _get_wd(adata, wgcna_name)
+    modules_df = wd.get("modules_df")
+    if modules_df is None:
+        raise ValueError("No module data found.")
+
+    mod_pres = wd.get("module_preservation", {}).get(preservation_name)
+    if mod_pres is None:
+        raise ValueError(f"Module preservation '{preservation_name}' not found.")
+
+    unique_mods = modules_df[["module", "color"]].drop_duplicates()
+    mod_color_dict = dict(zip(unique_mods["module"], unique_mods["color"]))
+
+    if features is None:
+        features = "Zsummary.pres"
+
+    if "Z" in mod_pres:
+        z_df = mod_pres["Z"]
+        if isinstance(z_df, pd.DataFrame) and features in z_df.columns:
+            plot_df = z_df[[features, "moduleSize"]].copy() if "moduleSize" in z_df.columns else z_df[[features]].copy()
+            plot_df.columns = [c if c == features else "moduleSize" for c in plot_df.columns]
+            plot_df["module"] = z_df.index
+            plot_df = plot_df[~plot_df["module"].isin(["gold", "grey"])]
+            plot_df = plot_df.sort_values(features)
+            plot_df["module"] = pd.Categorical(plot_df["module"], categories=plot_df["module"], ordered=True)
+
+            _setup_publication_style()
+            fig, ax = plt.subplots(figsize=(5, max(2, len(plot_df) * 0.35)), dpi=300)
+
+            y_pos = range(len(plot_df))
+            colors = [_to_mpl_color(mod_color_dict.get(m, "gold")) for m in plot_df["module"]]
+            sizes = plot_df["moduleSize"].values if "moduleSize" in plot_df.columns else np.ones(len(plot_df)) * 20
+
+            for i, (_, row) in enumerate(plot_df.iterrows()):
+                ax.plot([0, row[features]], [i, i], color=colors[i], alpha=0.5, linewidth=0.5)
+            ax.scatter(plot_df[features], y_pos, c=colors, s=sizes * 2, edgecolors="black", linewidths=0.3, zorder=3)
+
+            ax.axvline(x=2, color="grey75", linestyle="-", linewidth=5, alpha=0.5, zorder=0)
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(plot_df["module"].values, fontsize=7)
+            ax.set_xlabel(features, fontsize=9)
+            ax.set_ylabel("")
+            ax.set_title(features, fontsize=10)
+        else:
+            raise ValueError(f"Feature {features} not found in preservation results.")
+    else:
+        raise ValueError("Module preservation data format not recognized.")
+
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(0.5)
+    fig.tight_layout(pad=0.02)
+
+    if save_path:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+    return fig
