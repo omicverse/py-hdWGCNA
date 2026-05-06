@@ -37,13 +37,13 @@ dependencies = [
     "matplotlib>=3.6",
     "seaborn>=0.12",
     "harmonypy>=0.0.9",
+    "dynamicTreeCut",
     "requests",
     "tqdm",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-cov", "ruff"]
-dtc = ["dynamicTreeCut"]
+dev = ["pytest>=7", "pytest-cov", "ruff", "scanpy"]
 umap = ["umap-learn>=0.5"]
 
 [project.urls]
