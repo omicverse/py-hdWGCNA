@@ -105,7 +105,6 @@ def metacells_by_groups(
         cell_sample = nn_map[chosen, :]
 
         mc_obs_list = []
-        metacell_names = []
 
         for mc_i in range(n_metacells):
             members_local = cell_sample[mc_i, :]

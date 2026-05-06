@@ -36,7 +36,14 @@ from .core import setup_for_wgcna
 from .metacells import metacells_by_groups, normalize_metacells
 from .network import test_soft_powers, construct_network
 from .modules import module_eigengenes, module_connectivity, reset_module_names
-from .analysis import find_dmes, find_all_dmes, module_trait_correlation, overlap_modules_degs, module_expr_score, avg_module_expr
+from .analysis import (
+    find_dmes,
+    find_all_dmes,
+    module_trait_correlation,
+    overlap_modules_degs,
+    module_expr_score,
+    avg_module_expr,
+)
 from .enrichment import run_enrichr, run_enrichr_modules
 from .projection import project_modules, module_preservation
 from .tf_network import (

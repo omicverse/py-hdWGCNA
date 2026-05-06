@@ -8,8 +8,7 @@ import numpy as np
 import pandas as pd
 import os
 from anndata import AnnData
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-import functools
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import harmonypy as _harmonypy_mod
@@ -17,21 +16,40 @@ try:
     import torch as _torch
 
     def _fast_init_cluster(self, random_state):
-        _harmonypy_mod.harmony.logger.info("Computing initial centroids with sklearn.KMeans...")
+        _harmonypy_mod.harmony.logger.info(
+            "Computing initial centroids with sklearn.KMeans..."
+        )
         Z_cos_np = self._Z_cos.cpu().numpy()
         if self.K > 30:
-            model = _MiniBatchKMeans(n_clusters=self.K, batch_size=256,
-                                     n_init=1, max_iter=25, random_state=random_state)
+            model = _MiniBatchKMeans(
+                n_clusters=self.K,
+                batch_size=256,
+                n_init=1,
+                max_iter=25,
+                random_state=random_state,
+            )
         else:
             from sklearn.cluster import KMeans
-            model = KMeans(n_clusters=self.K, init='k-means++',
-                           n_init=1, max_iter=25, random_state=random_state)
+
+            model = KMeans(
+                n_clusters=self.K,
+                init="k-means++",
+                n_init=1,
+                max_iter=25,
+                random_state=random_state,
+            )
         model.fit(Z_cos_np.T)
-        self._Y = _torch.tensor(model.cluster_centers_.T, dtype=_torch.float32, device=self.device)
+        self._Y = _torch.tensor(
+            model.cluster_centers_.T, dtype=_torch.float32, device=self.device
+        )
         _harmonypy_mod.harmony.logger.info("KMeans initialization complete.")
         self._Y = self._Y / _torch.linalg.norm(self._Y, ord=2, dim=0)
-        self._R = _torch.zeros((self.K, self.N), dtype=_torch.float32, device=self.device)
-        self._O = _torch.zeros((self.K, self.N), dtype=_torch.float32, device=self.device)
+        self._R = _torch.zeros(
+            (self.K, self.N), dtype=_torch.float32, device=self.device
+        )
+        self._O = _torch.zeros(
+            (self.K, self.N), dtype=_torch.float32, device=self.device
+        )
 
     _harmonypy_mod.harmony.Harmony.init_cluster = _fast_init_cluster
 except Exception:
@@ -106,8 +124,7 @@ def module_eigengenes(
 
     if harmonize and group_by_vars is not None:
         print(
-            "Harmonizing module eigengenes (harmonypy, %d run(s))..."
-            % n_harmony_runs
+            "Harmonizing module eigengenes (harmonypy, %d run(s))..." % n_harmony_runs
         )
         obs_for_harmony = None
         if isinstance(group_by_vars, str):
@@ -120,12 +137,18 @@ def module_eigengenes(
 
         if obs_for_harmony is not None:
             hME_list = {}
-            harmony_func = _harmony_correct_consensus if n_harmony_runs > 1 else _harmony_correct_single_module
+            harmony_func = (
+                _harmony_correct_consensus
+                if n_harmony_runs > 1
+                else _harmony_correct_single_module
+            )
             harmony_args = []
             for idx_m, col in enumerate(mod_names):
                 mod_key = valid_mods[idx_m]
                 pca_emb = pca_embeddings_dict[mod_key]
-                harmony_args.append((pca_emb, obs_for_harmony, group_by_vars, n_harmony_runs))
+                harmony_args.append(
+                    (pca_emb, obs_for_harmony, group_by_vars, n_harmony_runs)
+                )
 
             n_workers = min(len(mod_names), os.cpu_count() or 4, 7)
             if len(mod_names) > 1 and n_workers > 1:
@@ -197,7 +220,6 @@ def _compute_mes_seurat_compatible(
         mod_expr = expr_mat[gene_idx, :].astype(np.float64)
 
         n_cells = mod_expr.shape[1]
-        n_genes = mod_expr.shape[0]
 
         mod_centered = mod_expr - np.mean(mod_expr, axis=1, keepdims=True)
         mod_std = np.std(mod_expr, axis=1, ddof=1, keepdims=True)
@@ -649,7 +671,9 @@ def _harmony_correct_consensus(
     results = []
     for seed in range(n_runs):
         hme_emb = _harmony_correct_single_module(
-            pca_embeddings, obs_df, group_by_vars,
+            pca_embeddings,
+            obs_df,
+            group_by_vars,
             max_iter_harmony=max_iter_harmony,
             max_iter_kmeans=max_iter_kmeans,
             epsilon_harmony=epsilon_harmony,
@@ -679,6 +703,7 @@ def _fast_pca(
 
     try:
         from scipy.sparse.linalg import svds
+
         k = min(n_pcs, min(data.shape) - 1)
         U, s, Vt = svds(data, k=k)
         sort_idx = np.argsort(s)[::-1]
@@ -687,6 +712,7 @@ def _fast_pca(
         return U * s[np.newaxis, :]
     except Exception:
         from sklearn.decomposition import PCA
+
         pca = PCA(n_components=n_pcs)
         return pca.fit_transform(data)
 
@@ -698,11 +724,16 @@ def _parallel_harmony(harmony_func, args_list, n_workers):
         pca_emb, obs_df, group_by_vars, n_runs = args
         if n_runs > 1:
             return _harmony_correct_consensus(
-                pca_emb, obs_df, group_by_vars, n_runs=n_runs,
+                pca_emb,
+                obs_df,
+                group_by_vars,
+                n_runs=n_runs,
             )
         else:
             return _harmony_correct_single_module(
-                pca_emb, obs_df, group_by_vars,
+                pca_emb,
+                obs_df,
+                group_by_vars,
             )
 
     try:

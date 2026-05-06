@@ -3704,7 +3704,12 @@ def module_corr_network(
     """
     wd = _get_wd(adata, wgcna_name)
 
-    me_key_map = {"hMEs": "hMEs", "MEs": "MEs", "scores": "module_scores", "average": "avg_module_expr"}
+    me_key_map = {
+        "hMEs": "hMEs",
+        "MEs": "MEs",
+        "scores": "module_scores",
+        "average": "avg_module_expr",
+    }
     me_key = me_key_map.get(features, "hMEs")
     MEs = wd.get(me_key)
     if MEs is None:
@@ -3744,7 +3749,9 @@ def module_corr_network(
 
     red_key = reduction if reduction in adata.obsm else f"X_{reduction}"
     if red_key in adata.obsm:
-        red_df = pd.DataFrame(adata.obsm[red_key][:, :2], index=adata.obs_names, columns=["x", "y"])
+        red_df = pd.DataFrame(
+            adata.obsm[red_key][:, :2], index=adata.obs_names, columns=["x", "y"]
+        )
         red_df["cluster"] = clusters.values
         red_av = red_df.groupby("cluster")[["x", "y"]].mean()
     else:
@@ -3781,13 +3788,36 @@ def module_corr_network(
         x_vals = [pos[e1][0], pos[e2][0]]
         y_vals = [pos[e1][1], pos[e2][1]]
         color = "darkorchid" if w > 0 else "seagreen"
-        ax.plot(x_vals, y_vals, color=color, alpha=min(abs(w), 1.0), linewidth=abs(w) * edge_scale, zorder=1)
+        ax.plot(
+            x_vals,
+            y_vals,
+            color=color,
+            alpha=min(abs(w), 1.0),
+            linewidth=abs(w) * edge_scale,
+            zorder=1,
+        )
 
     for m in mods:
         c = _to_mpl_color(mod_color_dict.get(m, "blue"))
-        ax.scatter(pos[m][0], pos[m][1], s=vertex_size**2, c=[c], edgecolors="black", linewidths=0.5, zorder=2)
+        ax.scatter(
+            pos[m][0],
+            pos[m][1],
+            s=vertex_size**2,
+            c=[c],
+            edgecolors="black",
+            linewidths=0.5,
+            zorder=2,
+        )
         if label_vertices:
-            ax.annotate(m, pos[m], fontsize=6, ha="center", va="center", color="black", fontweight="bold")
+            ax.annotate(
+                m,
+                pos[m],
+                fontsize=6,
+                ha="center",
+                va="center",
+                color="black",
+                fontweight="bold",
+            )
 
     ax.set_aspect("equal")
     ax.axis("off")
@@ -3832,7 +3862,13 @@ def overlap_dot_plot(
         label = f"-{label}"
 
     _setup_publication_style()
-    fig, ax = plt.subplots(figsize=(max(4, len(df["module"].unique()) * 0.5), max(3, len(df["group"].unique()) * 0.5)), dpi=300)
+    fig, ax = plt.subplots(
+        figsize=(
+            max(4, len(df["module"].unique()) * 0.5),
+            max(3, len(df["group"].unique()) * 0.5),
+        ),
+        dpi=300,
+    )
 
     x_labels = df["module"].unique()
     y_labels = df["group"].unique()
@@ -3845,9 +3881,24 @@ def overlap_dot_plot(
         val = row[plot_var]
         color = _to_mpl_color(row.get("color", "blue"))
         size = max(abs(val) * 30, 10)
-        ax.scatter(xi, yi, s=size, c=[color], alpha=min(abs(val) / max(abs(df[plot_var].max()), 1e-10), 1.0), edgecolors="none", zorder=2)
+        ax.scatter(
+            xi,
+            yi,
+            s=size,
+            c=[color],
+            alpha=min(abs(val) / max(abs(df[plot_var].max()), 1e-10), 1.0),
+            edgecolors="none",
+            zorder=2,
+        )
         if plot_significance and "Significance" in row.index and row["Significance"]:
-            ax.annotate(row["Significance"], (xi, yi), fontsize=7, ha="center", va="bottom", color="black")
+            ax.annotate(
+                row["Significance"],
+                (xi, yi),
+                fontsize=7,
+                ha="center",
+                va="bottom",
+                color="black",
+            )
 
     ax.set_xticks(range(len(x_labels)))
     ax.set_xticklabels(x_labels, rotation=45, ha="right", fontsize=8)
@@ -3935,13 +3986,23 @@ def overlap_bar_plot(
             val = row[plot_var]
             ha = "left" if val >= 0 else "right"
             offset = 0.01 * abs(val) if val != 0 else 0.01
-            ax.text(val + offset if val >= 0 else val - offset, i, row["module"], fontsize=label_size, va="center", ha=ha, color="black")
+            ax.text(
+                val + offset if val >= 0 else val - offset,
+                i,
+                row["module"],
+                fontsize=label_size,
+                va="center",
+                ha=ha,
+                color="black",
+            )
 
         fig.tight_layout(pad=0.02)
         plot_list[str(cur_group)] = fig
 
     if save_path and len(plot_list) == 1:
-        list(plot_list.values())[0].savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+        list(plot_list.values())[0].savefig(
+            save_path, dpi=300, bbox_inches="tight", pad_inches=0.02
+        )
 
     return plot_list
 
@@ -3971,7 +4032,9 @@ def motif_overlap_bar_plot(
     overlap_df = wd.get("motif_overlap")
 
     if overlap_df is None:
-        raise ValueError("No motif overlap data found. Run overlap_modules_motifs first.")
+        raise ValueError(
+            "No motif overlap data found. Run overlap_modules_motifs first."
+        )
 
     mods = sorted(modules_df["module"].unique())
     mods = [m for m in mods if m != "grey"]
@@ -4004,7 +4067,9 @@ def motif_overlap_bar_plot(
         plot_list[cur_mod] = fig
 
     if save_path and len(plot_list) == 1:
-        list(plot_list.values())[0].savefig(save_path, dpi=300, bbox_inches="tight", pad_inches=0.02)
+        list(plot_list.values())[0].savefig(
+            save_path, dpi=300, bbox_inches="tight", pad_inches=0.02
+        )
 
     return plot_list
 
@@ -4063,6 +4128,7 @@ def do_hub_gene_heatmap(
         hub_list[cur_mod] = cur_df["gene_name"].tolist()
 
     from scipy.sparse import issparse
+
     if issparse(adata.X):
         expr = adata.X.toarray()
     else:
@@ -4105,11 +4171,23 @@ def do_hub_gene_heatmap(
         sub_expr = expr[sampled_indices, :][:, feature_indices].T
         sub_expr = np.clip(sub_expr, -2.5, 2.5)
 
-        im = ax.imshow(sub_expr, aspect="auto", cmap="RdBu_r", vmin=-2.5, vmax=2.5, interpolation="nearest")
+        ax.imshow(
+            sub_expr,
+            aspect="auto",
+            cmap="RdBu_r",
+            vmin=-2.5,
+            vmax=2.5,
+            interpolation="nearest",
+        )
         ax.set_yticks(range(len(cur_genes)))
         ax.set_yticklabels(cur_genes, fontsize=5, fontstyle="italic")
         ax.set_xticks([])
-        ax.set_ylabel(cur_mod, fontsize=8, color=_to_mpl_color(mod_color_dict.get(cur_mod, "black")), fontweight="bold")
+        ax.set_ylabel(
+            cur_mod,
+            fontsize=8,
+            color=_to_mpl_color(mod_color_dict.get(cur_mod, "black")),
+            fontweight="bold",
+        )
 
     fig.tight_layout(pad=0.02, h_pad=0.5)
 
@@ -4161,7 +4239,9 @@ def module_topology_heatmap(
         raise ValueError(f"Module {mod} not found.")
 
     cur_genes = cur_genes_df["gene_name"].tolist()
-    mod_color = cur_genes_df["color"].iloc[0] if "color" in cur_genes_df.columns else "blue"
+    mod_color = (
+        cur_genes_df["color"].iloc[0] if "color" in cur_genes_df.columns else "blue"
+    )
     if high_color is None:
         high_color = mod_color
 
@@ -4173,7 +4253,9 @@ def module_topology_heatmap(
     elif order_by == "degree":
         degrees = wd.get("degrees")
         if degrees is not None and "degree" in degrees.columns:
-            cur_deg = degrees[degrees["module"] == mod].sort_values("degree", ascending=False)
+            cur_deg = degrees[degrees["module"] == mod].sort_values(
+                "degree", ascending=False
+            )
             cur_genes = cur_deg["gene_name"].tolist()
 
     if matrix == "TOM":
@@ -4185,6 +4267,7 @@ def module_topology_heatmap(
         mat = tom_mat[np.ix_(gene_idx, gene_idx)]
     elif matrix == "Cor":
         from scipy.sparse import issparse
+
         if issparse(adata.X):
             expr = adata.X.toarray()
         else:
@@ -4198,7 +4281,6 @@ def module_topology_heatmap(
         raise ValueError("matrix must be 'TOM' or 'Cor'")
 
     mat[np.tril_indices(mat.shape[0])] = 0
-    n = len(cur_genes)
 
     if isinstance(plot_max, str) and plot_max.startswith("q"):
         q = int(plot_max[1:]) / 100.0
@@ -4212,7 +4294,14 @@ def module_topology_heatmap(
     _setup_publication_style()
     fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
     cmap = LinearSegmentedColormap.from_list("custom", [low_color, high_color])
-    im = ax.imshow(mat, cmap=cmap, vmin=plot_min, vmax=plot_max, aspect="equal", interpolation="nearest")
+    im = ax.imshow(
+        mat,
+        cmap=cmap,
+        vmin=plot_min,
+        vmax=plot_max,
+        aspect="equal",
+        interpolation="nearest",
+    )
 
     ax.set_xticks([])
     ax.set_yticks([])
@@ -4262,14 +4351,18 @@ def module_topology_barplot(
     if len(cur_genes_df) == 0:
         raise ValueError(f"Module {mod} not found.")
 
-    mod_color = cur_genes_df["color"].iloc[0] if "color" in cur_genes_df.columns else "blue"
+    mod_color = (
+        cur_genes_df["color"].iloc[0] if "color" in cur_genes_df.columns else "blue"
+    )
     if plot_color is None:
         plot_color = _to_mpl_color(mod_color)
 
     if features == "kME":
         kme_col = f"kME_{mod}"
         if kme_col in cur_genes_df.columns:
-            plot_df = cur_genes_df[["gene_name", kme_col]].rename(columns={kme_col: "value"})
+            plot_df = cur_genes_df[["gene_name", kme_col]].rename(
+                columns={kme_col: "value"}
+            )
             plot_df = plot_df.sort_values("value", ascending=False)
             label = "kME"
             plot_limits = (-1, 1)
@@ -4278,8 +4371,12 @@ def module_topology_barplot(
     elif features in ("degree", "weighted_degree"):
         degrees = wd.get("degrees")
         if degrees is None:
-            raise ValueError("Degree data not found. Run ModuleConnectivity with TOM first.")
-        plot_df = degrees[degrees["module"] == mod][["gene_name", features]].rename(columns={features: "value"})
+            raise ValueError(
+                "Degree data not found. Run ModuleConnectivity with TOM first."
+            )
+        plot_df = degrees[degrees["module"] == mod][["gene_name", features]].rename(
+            columns={features: "value"}
+        )
         plot_df = plot_df.sort_values("value", ascending=False)
         label = "Degree"
         plot_limits = (0, plot_df["value"].max() if len(plot_df) > 0 else 1)
@@ -4352,25 +4449,55 @@ def plot_module_preservation_lollipop(
     if "Z" in mod_pres:
         z_df = mod_pres["Z"]
         if isinstance(z_df, pd.DataFrame) and features in z_df.columns:
-            plot_df = z_df[[features, "moduleSize"]].copy() if "moduleSize" in z_df.columns else z_df[[features]].copy()
-            plot_df.columns = [c if c == features else "moduleSize" for c in plot_df.columns]
+            plot_df = (
+                z_df[[features, "moduleSize"]].copy()
+                if "moduleSize" in z_df.columns
+                else z_df[[features]].copy()
+            )
+            plot_df.columns = [
+                c if c == features else "moduleSize" for c in plot_df.columns
+            ]
             plot_df["module"] = z_df.index
             plot_df = plot_df[~plot_df["module"].isin(["gold", "grey"])]
             plot_df = plot_df.sort_values(features)
-            plot_df["module"] = pd.Categorical(plot_df["module"], categories=plot_df["module"], ordered=True)
+            plot_df["module"] = pd.Categorical(
+                plot_df["module"], categories=plot_df["module"], ordered=True
+            )
 
             _setup_publication_style()
             fig, ax = plt.subplots(figsize=(5, max(2, len(plot_df) * 0.35)), dpi=300)
 
             y_pos = range(len(plot_df))
-            colors = [_to_mpl_color(mod_color_dict.get(m, "gold")) for m in plot_df["module"]]
-            sizes = plot_df["moduleSize"].values if "moduleSize" in plot_df.columns else np.ones(len(plot_df)) * 20
+            colors = [
+                _to_mpl_color(mod_color_dict.get(m, "gold")) for m in plot_df["module"]
+            ]
+            sizes = (
+                plot_df["moduleSize"].values
+                if "moduleSize" in plot_df.columns
+                else np.ones(len(plot_df)) * 20
+            )
 
             for i, (_, row) in enumerate(plot_df.iterrows()):
-                ax.plot([0, row[features]], [i, i], color=colors[i], alpha=0.5, linewidth=0.5)
-            ax.scatter(plot_df[features], y_pos, c=colors, s=sizes * 2, edgecolors="black", linewidths=0.3, zorder=3)
+                ax.plot(
+                    [0, row[features]],
+                    [i, i],
+                    color=colors[i],
+                    alpha=0.5,
+                    linewidth=0.5,
+                )
+            ax.scatter(
+                plot_df[features],
+                y_pos,
+                c=colors,
+                s=sizes * 2,
+                edgecolors="black",
+                linewidths=0.3,
+                zorder=3,
+            )
 
-            ax.axvline(x=2, color="grey75", linestyle="-", linewidth=5, alpha=0.5, zorder=0)
+            ax.axvline(
+                x=2, color="grey75", linestyle="-", linewidth=5, alpha=0.5, zorder=0
+            )
             ax.set_yticks(y_pos)
             ax.set_yticklabels(plot_df["module"].values, fontsize=7)
             ax.set_xlabel(features, fontsize=9)

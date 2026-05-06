@@ -696,9 +696,7 @@ class HDWGCNA:
     # TF Network Analysis
     # ------------------------------------------------------------------ #
 
-    def generate_motif_data(
-        self, n_tfs=100, density=0.05, seed=42, wgcna_name=None
-    ):
+    def generate_motif_data(self, n_tfs=100, density=0.05, seed=42, wgcna_name=None):
         """Generate synthetic motif data for TF network analysis.
 
         Parameters
@@ -718,15 +716,13 @@ class HDWGCNA:
             self for chaining
         """
         from .tf_network import generate_motif_data as _gm
+
         self.adata = _gm(
-            self.adata, n_tfs=n_tfs, density=density, seed=seed,
-            wgcna_name=wgcna_name
+            self.adata, n_tfs=n_tfs, density=density, seed=seed, wgcna_name=wgcna_name
         )
         return self
 
-    def construct_tf_network(
-        self, model_params=None, nfold=5, wgcna_name=None
-    ):
+    def construct_tf_network(self, model_params=None, nfold=5, wgcna_name=None):
         """Construct directed TF-gene network using XGBoost.
 
         Parameters
@@ -744,15 +740,14 @@ class HDWGCNA:
             self for chaining
         """
         from .tf_network import construct_tf_network as _ctf
+
         self.adata = _ctf(
-            self.adata, model_params=model_params, nfold=nfold,
-            wgcna_name=wgcna_name
+            self.adata, model_params=model_params, nfold=nfold, wgcna_name=wgcna_name
         )
         return self
 
     def assign_tf_regulons(
-        self, strategy="A", reg_thresh=0.01, n_tfs=10, n_genes=50,
-        wgcna_name=None
+        self, strategy="A", reg_thresh=0.01, n_tfs=10, n_genes=50, wgcna_name=None
     ):
         """Assign TF regulons.
 
@@ -775,15 +770,23 @@ class HDWGCNA:
             self for chaining
         """
         from .tf_network import assign_tf_regulons as _atr
+
         self.adata = _atr(
-            self.adata, strategy=strategy, reg_thresh=reg_thresh,
-            n_tfs=n_tfs, n_genes=n_genes, wgcna_name=wgcna_name
+            self.adata,
+            strategy=strategy,
+            reg_thresh=reg_thresh,
+            n_tfs=n_tfs,
+            n_genes=n_genes,
+            wgcna_name=wgcna_name,
         )
         return self
 
     def regulon_scores(
-        self, target_type="positive", cor_thresh=0.05,
-        exclude_grey_genes=True, wgcna_name=None
+        self,
+        target_type="positive",
+        cor_thresh=0.05,
+        exclude_grey_genes=True,
+        wgcna_name=None,
     ):
         """Compute regulon activity scores.
 
@@ -804,22 +807,34 @@ class HDWGCNA:
             self for chaining
         """
         from .tf_network import regulon_scores as _rs
+
         self.adata = _rs(
-            self.adata, target_type=target_type, cor_thresh=cor_thresh,
-            exclude_grey_genes=exclude_grey_genes, wgcna_name=wgcna_name
+            self.adata,
+            target_type=target_type,
+            cor_thresh=cor_thresh,
+            exclude_grey_genes=exclude_grey_genes,
+            wgcna_name=wgcna_name,
         )
         return self
 
     def get_tf_target_genes(
-        self, selected_tfs, depth=1, target_type="both",
-        use_regulons=True, wgcna_name=None
+        self,
+        selected_tfs,
+        depth=1,
+        target_type="both",
+        use_regulons=True,
+        wgcna_name=None,
     ):
         """Get TF target genes with depth."""
         from .tf_network import get_tf_target_genes as _gttg
+
         return _gttg(
-            self.adata, selected_tfs=selected_tfs, depth=depth,
-            target_type=target_type, use_regulons=use_regulons,
-            wgcna_name=wgcna_name
+            self.adata,
+            selected_tfs=selected_tfs,
+            depth=depth,
+            target_type=target_type,
+            use_regulons=use_regulons,
+            wgcna_name=wgcna_name,
         )
 
     def module_regulatory_network(self, tfs_only=True, wgcna_name=None):
@@ -831,24 +846,34 @@ class HDWGCNA:
             Module regulatory network
         """
         from .tf_network import module_regulatory_network as _mrn
+
         return _mrn(self.adata, tfs_only=tfs_only, wgcna_name=wgcna_name)
 
-    def tf_network_plot(self, selected_tfs, depth=2, wgcna_name=None,
-                        save_path=None, **kwargs):
+    def tf_network_plot(
+        self, selected_tfs, depth=2, wgcna_name=None, save_path=None, **kwargs
+    ):
         """Plot TF-target gene network."""
         from .tf_plotting import tf_network_plot as _tnp
+
         return _tnp(
-            self.adata, selected_tfs=selected_tfs, depth=depth,
-            wgcna_name=wgcna_name, save_path=save_path, **kwargs
+            self.adata,
+            selected_tfs=selected_tfs,
+            depth=depth,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
+            **kwargs,
         )
 
-    def regulon_bar_plot(self, selected_tf, wgcna_name=None,
-                         save_path=None, **kwargs):
+    def regulon_bar_plot(self, selected_tf, wgcna_name=None, save_path=None, **kwargs):
         """Plot regulon bar chart for a TF."""
         from .tf_plotting import regulon_bar_plot as _rbp
+
         return _rbp(
-            self.adata, selected_tf=selected_tf,
-            wgcna_name=wgcna_name, save_path=save_path, **kwargs
+            self.adata,
+            selected_tf=selected_tf,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
+            **kwargs,
         )
 
     def module_regulatory_network_plot(
@@ -856,9 +881,13 @@ class HDWGCNA:
     ):
         """Plot module regulatory network graph."""
         from .tf_plotting import module_regulatory_network_plot as _mrnp
+
         return _mrnp(
-            self.adata, feature=feature,
-            wgcna_name=wgcna_name, save_path=save_path, **kwargs
+            self.adata,
+            feature=feature,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
+            **kwargs,
         )
 
     def module_regulatory_heatmap(
@@ -866,9 +895,13 @@ class HDWGCNA:
     ):
         """Plot module regulatory heatmap."""
         from .tf_plotting import module_regulatory_heatmap as _mrh
+
         return _mrh(
-            self.adata, feature=feature,
-            wgcna_name=wgcna_name, save_path=save_path, **kwargs
+            self.adata,
+            feature=feature,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
+            **kwargs,
         )
 
     # ------------------------------------------------------------------ #
@@ -909,10 +942,17 @@ class HDWGCNA:
         DataFrame
         """
         from .analysis import find_dmes as _fd
+
         return _fd(
-            self.adata, group_by=group_by, group1=group1, group2=group2,
-            features=features, test=test, logfc_threshold=logfc_threshold,
-            min_pct=min_pct, wgcna_name=wgcna_name,
+            self.adata,
+            group_by=group_by,
+            group1=group1,
+            group2=group2,
+            features=features,
+            test=test,
+            logfc_threshold=logfc_threshold,
+            min_pct=min_pct,
+            wgcna_name=wgcna_name,
         )
 
     def find_all_dmes(
@@ -940,9 +980,14 @@ class HDWGCNA:
         dict mapping comparison name to DataFrame
         """
         from .analysis import find_all_dmes as _fad
+
         return _fad(
-            self.adata, group_by=group_by, features=features, test=test,
-            logfc_threshold=logfc_threshold, min_pct=min_pct,
+            self.adata,
+            group_by=group_by,
+            features=features,
+            test=test,
+            logfc_threshold=logfc_threshold,
+            min_pct=min_pct,
             wgcna_name=wgcna_name,
         )
 
@@ -967,9 +1012,13 @@ class HDWGCNA:
         Dict with keys: cor, pval, fdr
         """
         from .analysis import module_trait_correlation as _mtc
+
         return _mtc(
-            self.adata, trait_cols=trait_cols, features=features,
-            method=method, wgcna_name=wgcna_name,
+            self.adata,
+            trait_cols=trait_cols,
+            features=features,
+            method=method,
+            wgcna_name=wgcna_name,
         )
 
     def overlap_modules_degs(
@@ -993,9 +1042,13 @@ class HDWGCNA:
         DataFrame with overlap statistics
         """
         from .analysis import overlap_modules_degs as _omd
+
         return _omd(
-            self.adata, deg_df=deg_df, fc_cutoff=fc_cutoff,
-            group_col=group_col, wgcna_name=wgcna_name,
+            self.adata,
+            deg_df=deg_df,
+            fc_cutoff=fc_cutoff,
+            group_col=group_col,
+            wgcna_name=wgcna_name,
         )
 
     def module_expr_score(
@@ -1016,8 +1069,11 @@ class HDWGCNA:
             self for chaining
         """
         from .analysis import module_expr_score as _mes
+
         self.adata = _mes(
-            self.adata, n_genes=n_genes, wgcna_name=wgcna_name,
+            self.adata,
+            n_genes=n_genes,
+            wgcna_name=wgcna_name,
         )
         return self
 
@@ -1039,8 +1095,11 @@ class HDWGCNA:
             self for chaining
         """
         from .analysis import avg_module_expr as _ame
+
         self.adata = _ame(
-            self.adata, n_genes=n_genes, wgcna_name=wgcna_name,
+            self.adata,
+            n_genes=n_genes,
+            wgcna_name=wgcna_name,
         )
         return self
 
@@ -1067,6 +1126,7 @@ class HDWGCNA:
         DataFrame
         """
         from .enrichment import run_enrichr as _re
+
         return _re(gene_list=gene_list, gene_sets=gene_sets, species=species)
 
     def run_enrichr_modules(
@@ -1090,9 +1150,13 @@ class HDWGCNA:
         dict mapping module name to enrichment DataFrame
         """
         from .enrichment import run_enrichr_modules as _rem
+
         return _rem(
-            self.adata, gene_sets=gene_sets, exclude_grey=exclude_grey,
-            species=species, wgcna_name=wgcna_name,
+            self.adata,
+            gene_sets=gene_sets,
+            exclude_grey=exclude_grey,
+            species=species,
+            wgcna_name=wgcna_name,
         )
 
     # ------------------------------------------------------------------ #
@@ -1111,6 +1175,7 @@ class HDWGCNA:
         DataFrame with module-TF overlap statistics
         """
         from .tf_network import overlap_modules_motifs as _omm
+
         return _omm(self.adata, wgcna_name=wgcna_name)
 
     def find_differential_regulons(
@@ -1135,9 +1200,13 @@ class HDWGCNA:
         DataFrame
         """
         from .tf_network import find_differential_regulons as _fdr
+
         return _fdr(
-            self.adata, barcodes1=barcodes1, barcodes2=barcodes2,
-            test_use=test_use, logfc_threshold=logfc_threshold,
+            self.adata,
+            barcodes1=barcodes1,
+            barcodes2=barcodes2,
+            test_use=test_use,
+            logfc_threshold=logfc_threshold,
             wgcna_name=wgcna_name,
         )
 
@@ -1165,30 +1234,39 @@ class HDWGCNA:
             self for chaining
         """
         from .tf_network import run_enrichr_regulons as _rer
+
         self.adata = _rer(
-            self.adata, dbs=dbs, depth=depth, min_genes=min_genes,
-            wait_time=wait_time, wgcna_name=wgcna_name,
+            self.adata,
+            dbs=dbs,
+            depth=depth,
+            min_genes=min_genes,
+            wait_time=wait_time,
+            wgcna_name=wgcna_name,
         )
         return self
 
     def get_tf_network(self, wgcna_name=None):
         """Get the TF network dataframe."""
         from .tf_network import get_tf_network as _gtfn
+
         return _gtfn(self.adata, wgcna_name=wgcna_name)
 
     def get_tf_regulons(self, wgcna_name=None):
         """Get the TF regulons dataframe."""
         from .tf_network import get_tf_regulons as _gtfr
+
         return _gtfr(self.adata, wgcna_name=wgcna_name)
 
     def get_regulon_scores(self, target_type="positive", wgcna_name=None):
         """Get regulon scores."""
         from .tf_network import get_regulon_scores as _grs
+
         return _grs(self.adata, target_type=target_type, wgcna_name=wgcna_name)
 
     def get_enrichr_regulon_table(self, wgcna_name=None):
         """Get the Enrichr regulon enrichment table."""
         from .tf_network import get_enrichr_regulon_table as _gert
+
         return _gert(self.adata, wgcna_name=wgcna_name)
 
     # ------------------------------------------------------------------ #
@@ -1212,13 +1290,19 @@ class HDWGCNA:
     ):
         """Combined network plot with hub genes from multiple modules."""
         return self._plotting.hub_gene_network_plot(
-            self.adata, mods=mods, n_hubs=n_hubs, n_other=n_other,
-            sample_edges=sample_edges, edge_prop=edge_prop,
-            return_graph=return_graph, edge_alpha=edge_alpha,
+            self.adata,
+            mods=mods,
+            n_hubs=n_hubs,
+            n_other=n_other,
+            sample_edges=sample_edges,
+            edge_prop=edge_prop,
+            return_graph=return_graph,
+            edge_alpha=edge_alpha,
             vertex_label_cex=vertex_label_cex,
             hub_vertex_size=hub_vertex_size,
             other_vertex_size=other_vertex_size,
-            wgcna_name=wgcna_name, save_path=save_path,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def module_umap_plot(
@@ -1236,11 +1320,17 @@ class HDWGCNA:
     ):
         """Plot module UMAP with gene network overlay."""
         return self._plotting.module_umap_plot(
-            self.adata, sample_edges=sample_edges, edge_prop=edge_prop,
-            label_hubs=label_hubs, edge_alpha=edge_alpha,
-            vertex_label_cex=vertex_label_cex, label_genes=label_genes,
-            return_graph=return_graph, keep_grey_edges=keep_grey_edges,
-            wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            sample_edges=sample_edges,
+            edge_prop=edge_prop,
+            label_hubs=label_hubs,
+            edge_alpha=edge_alpha,
+            vertex_label_cex=vertex_label_cex,
+            label_genes=label_genes,
+            return_graph=return_graph,
+            keep_grey_edges=keep_grey_edges,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def compute_module_umap(
@@ -1264,10 +1354,17 @@ class HDWGCNA:
             self for chaining
         """
         self.adata = self._plotting.compute_module_umap(
-            self.adata, n_hubs=n_hubs, exclude_grey=exclude_grey,
-            genes_use=genes_use, n_neighbors=n_neighbors, metric=metric,
-            spread=spread, min_dist=min_dist, supervised=supervised,
-            random_state=random_state, wgcna_name=wgcna_name,
+            self.adata,
+            n_hubs=n_hubs,
+            exclude_grey=exclude_grey,
+            genes_use=genes_use,
+            n_neighbors=n_neighbors,
+            metric=metric,
+            spread=spread,
+            min_dist=min_dist,
+            supervised=supervised,
+            random_state=random_state,
+            wgcna_name=wgcna_name,
         )
         return self
 
@@ -1285,10 +1382,15 @@ class HDWGCNA:
     ):
         """Volcano plot for DME results."""
         return self._plotting.plot_dmes_volcano(
-            self.adata, dme_df=dme_df, plot_labels=plot_labels,
-            label_size=label_size, mod_point_size=mod_point_size,
-            show_cutoff=show_cutoff, wgcna_name=wgcna_name,
-            xlim_range=xlim_range, ylim_range=ylim_range,
+            self.adata,
+            dme_df=dme_df,
+            plot_labels=plot_labels,
+            label_size=label_size,
+            mod_point_size=mod_point_size,
+            show_cutoff=show_cutoff,
+            wgcna_name=wgcna_name,
+            xlim_range=xlim_range,
+            ylim_range=ylim_range,
             save_path=save_path,
         )
 
@@ -1304,9 +1406,13 @@ class HDWGCNA:
     ):
         """Lollipop plot for DME results."""
         return self._plotting.plot_dmes_lollipop(
-            self.adata, dme_df=dme_df, group_by=group_by,
-            comparison=comparison, pvalue=pvalue,
-            avg_log2fc_col=avg_log2fc_col, wgcna_name=wgcna_name,
+            self.adata,
+            dme_df=dme_df,
+            group_by=group_by,
+            comparison=comparison,
+            pvalue=pvalue,
+            avg_log2fc_col=avg_log2fc_col,
+            wgcna_name=wgcna_name,
             save_path=save_path,
         )
 
@@ -1327,11 +1433,19 @@ class HDWGCNA:
     ):
         """Heatmap of module-trait correlations."""
         return self._plotting.plot_module_trait_correlation(
-            self.adata, high_color=high_color, mid_color=mid_color,
-            low_color=low_color, label=label, label_symbol=label_symbol,
-            plot_max=plot_max, text_size=text_size, text_color=text_color,
-            text_digits=text_digits, combine=combine,
-            wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            high_color=high_color,
+            mid_color=mid_color,
+            low_color=low_color,
+            label=label,
+            label_symbol=label_symbol,
+            plot_max=plot_max,
+            text_size=text_size,
+            text_color=text_color,
+            text_digits=text_digits,
+            combine=combine,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def enrichr_bar_plot(
@@ -1344,8 +1458,11 @@ class HDWGCNA:
     ):
         """Bar plot of Enrichr results."""
         return self._plotting.enrichr_bar_plot(
-            enrichr_results=enrichr_results, top_n=top_n,
-            group_by=group_by, color=color, save_path=save_path,
+            enrichr_results=enrichr_results,
+            top_n=top_n,
+            group_by=group_by,
+            color=color,
+            save_path=save_path,
         )
 
     def enrichr_dot_plot(
@@ -1358,8 +1475,11 @@ class HDWGCNA:
     ):
         """Dot plot of Enrichr results."""
         return self._plotting.enrichr_dot_plot(
-            enrichr_results=enrichr_results, top_n=top_n,
-            group_by=group_by, size_col=size_col, save_path=save_path,
+            enrichr_results=enrichr_results,
+            top_n=top_n,
+            group_by=group_by,
+            size_col=size_col,
+            save_path=save_path,
         )
 
     def plot_module_preservation(
@@ -1372,7 +1492,8 @@ class HDWGCNA:
         if z_thresholds is None:
             z_thresholds = {"high": 10, "moderate": 5, "weak": 2}
         return self._plotting.plot_module_preservation(
-            preserv_df=preserv_df, z_thresholds=z_thresholds,
+            preserv_df=preserv_df,
+            z_thresholds=z_thresholds,
             save_path=save_path,
         )
 
@@ -1392,11 +1513,18 @@ class HDWGCNA:
     ):
         """Seurat-style DotPlot for module eigengenes grouped by cell type."""
         return self._plotting.module_dot_plot(
-            self.adata, features=features, group_by=group_by,
-            exclude_grey=exclude_grey, col_min=col_min, col_max=col_max,
-            dot_scale=dot_scale, scale_by=scale_by,
-            rotate_x_labels=rotate_x_labels, x_label_rotation=x_label_rotation,
-            wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            features=features,
+            group_by=group_by,
+            exclude_grey=exclude_grey,
+            col_min=col_min,
+            col_max=col_max,
+            dot_scale=dot_scale,
+            scale_by=scale_by,
+            rotate_x_labels=rotate_x_labels,
+            x_label_rotation=x_label_rotation,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def module_radar_plot(
@@ -1416,11 +1544,19 @@ class HDWGCNA:
     ):
         """Radar/spider plot for module eigengenes grouped by metadata."""
         return self._plotting.module_radar_plot(
-            self.adata, group_by=group_by, barcodes=barcodes,
-            features=features, exclude_grey=exclude_grey, fill=fill,
-            draw_points=draw_points, axis_label_size=axis_label_size,
-            grid_label_size=grid_label_size, ncols=ncols, combine=combine,
-            wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            group_by=group_by,
+            barcodes=barcodes,
+            features=features,
+            exclude_grey=exclude_grey,
+            fill=fill,
+            draw_points=draw_points,
+            axis_label_size=axis_label_size,
+            grid_label_size=grid_label_size,
+            ncols=ncols,
+            combine=combine,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def module_corr_network(
@@ -1438,10 +1574,16 @@ class HDWGCNA:
     ):
         """Plot module eigengene correlation network."""
         return self._plotting.module_corr_network(
-            self.adata, cluster_col=cluster_col, exclude_grey=exclude_grey,
-            features=features, reduction=reduction, cor_cutoff=cor_cutoff,
-            label_vertices=label_vertices, edge_scale=edge_scale,
-            vertex_size=vertex_size, wgcna_name=wgcna_name,
+            self.adata,
+            cluster_col=cluster_col,
+            exclude_grey=exclude_grey,
+            features=features,
+            reduction=reduction,
+            cor_cutoff=cor_cutoff,
+            label_vertices=label_vertices,
+            edge_scale=edge_scale,
+            vertex_size=vertex_size,
+            wgcna_name=wgcna_name,
             save_path=save_path,
         )
 
@@ -1456,8 +1598,11 @@ class HDWGCNA:
     ):
         """Dot plot for module-DEG overlap results."""
         return self._plotting.overlap_dot_plot(
-            overlap_df=overlap_df, plot_var=plot_var, logscale=logscale,
-            neglog=neglog, plot_significance=plot_significance,
+            overlap_df=overlap_df,
+            plot_var=plot_var,
+            logscale=logscale,
+            neglog=neglog,
+            plot_significance=plot_significance,
             save_path=save_path,
         )
 
@@ -1472,8 +1617,12 @@ class HDWGCNA:
     ):
         """Bar plot for module-DEG overlap results."""
         return self._plotting.overlap_bar_plot(
-            overlap_df=overlap_df, plot_var=plot_var, logscale=logscale,
-            neglog=neglog, label_size=label_size, save_path=save_path,
+            overlap_df=overlap_df,
+            plot_var=plot_var,
+            logscale=logscale,
+            neglog=neglog,
+            label_size=label_size,
+            save_path=save_path,
         )
 
     def motif_overlap_bar_plot(
@@ -1485,8 +1634,11 @@ class HDWGCNA:
     ):
         """Bar plot of top TFs in modules based on motif overlap."""
         return self._plotting.motif_overlap_bar_plot(
-            self.adata, n_tfs=n_tfs, module_names=module_names,
-            wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            n_tfs=n_tfs,
+            module_names=module_names,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def do_hub_gene_heatmap(
@@ -1500,8 +1652,12 @@ class HDWGCNA:
     ):
         """Heatmap of hub gene expression across cell groups."""
         return self._plotting.do_hub_gene_heatmap(
-            self.adata, n_hubs=n_hubs, n_cells=n_cells, group_by=group_by,
-            module_names=module_names, wgcna_name=wgcna_name,
+            self.adata,
+            n_hubs=n_hubs,
+            n_cells=n_cells,
+            group_by=group_by,
+            module_names=module_names,
+            wgcna_name=wgcna_name,
             save_path=save_path,
         )
 
@@ -1519,9 +1675,16 @@ class HDWGCNA:
     ):
         """Triangular heatmap of module network topology."""
         return self._plotting.module_topology_heatmap(
-            self.adata, mod=mod, matrix=matrix, order_by=order_by,
-            high_color=high_color, low_color=low_color, plot_max=plot_max,
-            plot_min=plot_min, wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            mod=mod,
+            matrix=matrix,
+            order_by=order_by,
+            high_color=high_color,
+            low_color=low_color,
+            plot_max=plot_max,
+            plot_min=plot_min,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def module_topology_barplot(
@@ -1535,8 +1698,13 @@ class HDWGCNA:
     ):
         """Ranked barplot of intramodular connectivity."""
         return self._plotting.module_topology_barplot(
-            self.adata, mod=mod, features=features, plot_color=plot_color,
-            alpha=alpha, wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            mod=mod,
+            features=features,
+            plot_color=plot_color,
+            alpha=alpha,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     def plot_module_preservation_lollipop(
@@ -1549,8 +1717,12 @@ class HDWGCNA:
     ):
         """Lollipop plot for module preservation statistics."""
         return self._plotting.plot_module_preservation_lollipop(
-            self.adata, preservation_name=preservation_name, features=features,
-            fdr=fdr, wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            preservation_name=preservation_name,
+            features=features,
+            fdr=fdr,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )
 
     # ------------------------------------------------------------------ #
@@ -1569,8 +1741,14 @@ class HDWGCNA:
     ):
         """Scatter plot of differential regulon results."""
         from .tf_plotting import plot_differential_regulons as _pdr
+
         return _pdr(
-            self.adata, dregs=dregs, n_label=n_label,
-            logfc_thresh=logfc_thresh, lm=lm, figsize=figsize,
-            wgcna_name=wgcna_name, save_path=save_path,
+            self.adata,
+            dregs=dregs,
+            n_label=n_label,
+            logfc_thresh=logfc_thresh,
+            lm=lm,
+            figsize=figsize,
+            wgcna_name=wgcna_name,
+            save_path=save_path,
         )

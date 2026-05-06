@@ -9,7 +9,7 @@ Plotting functions are in tf_plotting.py.
 from __future__ import annotations
 
 import warnings
-from typing import List, Optional, Union, Dict
+from typing import List, Optional
 import numpy as np
 import pandas as pd
 from anndata import AnnData
@@ -33,10 +33,15 @@ def _get_wd(adata: AnnData, wgcna_name: str = None) -> dict:
 # Motif Scanning (simplified - synthetic motif-gene matrix)
 # ------------------------------------------------------------------ #
 
+
 def _fetch_jaspar_tfs():
     """Fetch real TF gene symbols from JASPAR REST API (core vertebrates)."""
     import requests
-    from requests.exceptions import Timeout, ConnectionError as ReqConnectionError, HTTPError
+    from requests.exceptions import (
+        Timeout,
+        ConnectionError as ReqConnectionError,
+        HTTPError,
+    )
     import os
     import json
 
@@ -104,7 +109,11 @@ def _fetch_enrichr_tfs(libraries=None):
     the first word as the TF gene symbol.
     """
     import requests
-    from requests.exceptions import Timeout, ConnectionError as ReqConnectionError, HTTPError
+    from requests.exceptions import (
+        Timeout,
+        ConnectionError as ReqConnectionError,
+        HTTPError,
+    )
     import os
     import json
 
@@ -220,7 +229,6 @@ def generate_motif_data(
         raise ValueError("Modules not found. Run construct_network first.")
 
     genes = modules_df["gene_name"].tolist()
-    gene_set = set(genes)
     n_genes = len(genes)
 
     # Case-insensitive gene lookup: upper -> actual gene name in dataset
@@ -231,8 +239,11 @@ def generate_motif_data(
         jaspar_tfs = _fetch_jaspar_tfs()
 
         # Find TFs that exist in our gene list (case-insensitive)
-        tf_names = [gene_upper_to_actual[g.upper()] for g in jaspar_tfs
-                    if g.upper() in gene_upper_to_actual]
+        tf_names = [
+            gene_upper_to_actual[g.upper()]
+            for g in jaspar_tfs
+            if g.upper() in gene_upper_to_actual
+        ]
         print(f"  JASPAR TFs in dataset: {len(tf_names)} out of {len(jaspar_tfs)}")
 
         if not tf_names:
@@ -244,8 +255,11 @@ def generate_motif_data(
         enrichr_tfs = _fetch_enrichr_tfs()
 
         # Case-insensitive matching
-        tf_names = [gene_upper_to_actual[g.upper()] for g in enrichr_tfs
-                    if g.upper() in gene_upper_to_actual]
+        tf_names = [
+            gene_upper_to_actual[g.upper()]
+            for g in enrichr_tfs
+            if g.upper() in gene_upper_to_actual
+        ]
         print(f"  Enrichr TFs in dataset: {len(tf_names)} out of {len(enrichr_tfs)}")
 
         if not tf_names:
@@ -257,8 +271,10 @@ def generate_motif_data(
         jaspar_tfs = _fetch_jaspar_tfs()
         enrichr_tfs = _fetch_enrichr_tfs()
         all_db_tfs = sorted(set(jaspar_tfs) | set(enrichr_tfs))
-        print(f"  Combined database TFs: {len(all_db_tfs)} "
-              f"(JASPAR: {len(jaspar_tfs)}, Enrichr: {len(enrichr_tfs)})")
+        print(
+            f"  Combined database TFs: {len(all_db_tfs)} "
+            f"(JASPAR: {len(jaspar_tfs)}, Enrichr: {len(enrichr_tfs)})"
+        )
 
         # Case-insensitive matching, deduplicate by actual gene name
         seen = set()
@@ -271,7 +287,9 @@ def generate_motif_data(
         print(f"  TFs matched in dataset: {len(tf_names)}")
 
         if not tf_names:
-            warnings.warn("No TFs found in dataset from any database. Falling back to synthetic.")
+            warnings.warn(
+                "No TFs found in dataset from any database. Falling back to synthetic."
+            )
             source = "synthetic"
 
     if source == "synthetic":
@@ -279,7 +297,7 @@ def generate_motif_data(
         kME_cols = [c for c in modules_df.columns if c.startswith("kME_")]
         if kME_cols:
             max_kme = modules_df[kME_cols].max(axis=1).values
-            tf_indices = np.argsort(-max_kme)[:min(n_tfs, n_genes)]
+            tf_indices = np.argsort(-max_kme)[: min(n_tfs, n_genes)]
         else:
             rng = np.random.default_rng(seed)
             tf_indices = rng.choice(n_genes, size=min(n_tfs, n_genes), replace=False)
@@ -316,12 +334,14 @@ def generate_motif_data(
     )
 
     # Create motif info dataframe
-    motif_info = pd.DataFrame({
-        "motif_id": motif_matrix_df.columns.tolist(),
-        "motif_name": tf_names,
-        "gene_name": tf_names,
-        "n_targets": motif_matrix.sum(axis=0).astype(int).tolist(),
-    })
+    motif_info = pd.DataFrame(
+        {
+            "motif_id": motif_matrix_df.columns.tolist(),
+            "motif_name": tf_names,
+            "gene_name": tf_names,
+            "n_targets": motif_matrix.sum(axis=0).astype(int).tolist(),
+        }
+    )
 
     # Create TF target genes list
     tf_targets = {}
@@ -336,8 +356,10 @@ def generate_motif_data(
 
     adata = set_hdWGCNA_data(adata, wd, wgcna_name)
 
-    print(f"Motif data: {len(tf_names)} TFs, {n_genes} genes, "
-          f"source={source}, density={motif_matrix.mean():.3f}")
+    print(
+        f"Motif data: {len(tf_names)} TFs, {n_genes} genes, "
+        f"source={source}, density={motif_matrix.mean():.3f}"
+    )
 
     return adata
 
@@ -345,6 +367,7 @@ def generate_motif_data(
 # ------------------------------------------------------------------ #
 # TF Network Construction (XGBoost)
 # ------------------------------------------------------------------ #
+
 
 def construct_tf_network(
     adata: AnnData,
@@ -432,7 +455,7 @@ def construct_tf_network(
         dat_expr = dat_expr.T
         # Update gene_names if needed
         if dat_expr.shape[0] != len(gene_names):
-            gene_names = gene_names[:dat_expr.shape[0]]
+            gene_names = gene_names[: dat_expr.shape[0]]
 
     # Now dat_expr is (n_genes, n_cells)
     n_dat_genes, n_cells = dat_expr.shape
@@ -489,16 +512,15 @@ def construct_tf_network(
         gene_idx = gene_name_to_idx[cur_gene]
 
         x_vars = dat_expr[tf_indices, :].T  # (n_cells, n_tfs)
-        y_var = dat_expr[gene_idx, :]        # (n_cells,)
+        y_var = dat_expr[gene_idx, :]  # (n_cells,)
 
         if np.all(y_var == 0):
             continue
 
         # Pearson correlation between each TF and the gene
-        tf_cor = np.array([
-            np.corrcoef(x_vars[:, j], y_var)[0, 1]
-            for j in range(x_vars.shape[1])
-        ])
+        tf_cor = np.array(
+            [np.corrcoef(x_vars[:, j], y_var)[0, 1] for j in range(x_vars.shape[1])]
+        )
 
         # XGBoost CV
         dtrain = xgb.DMatrix(x_vars, label=y_var, feature_names=cur_tfs)
@@ -532,14 +554,16 @@ def construct_tf_network(
 
         imp_records = []
         for j, tf in enumerate(cur_tfs):
-            imp_records.append({
-                "tf": tf,
-                "gene": cur_gene,
-                "Gain": gain_scores.get(tf, 0.0),
-                "Cover": cover_scores.get(tf, 0.0),
-                "Frequency": freq_scores.get(tf, 0.0),
-                "Cor": tf_cor[j],
-            })
+            imp_records.append(
+                {
+                    "tf": tf,
+                    "gene": cur_gene,
+                    "Gain": gain_scores.get(tf, 0.0),
+                    "Cover": cover_scores.get(tf, 0.0),
+                    "Frequency": freq_scores.get(tf, 0.0),
+                    "Cor": tf_cor[j],
+                }
+            )
         imp_df = pd.DataFrame(imp_records)
         imp_df = imp_df.sort_values("Gain", ascending=False).reset_index(drop=True)
         importance_list.append(imp_df)
@@ -563,8 +587,10 @@ def construct_tf_network(
     n_pairs = len(importance_df)
     n_tfs = importance_df["tf"].nunique()
     n_genes = importance_df["gene"].nunique()
-    print(f"TF network constructed: {n_pairs} TF-gene pairs, "
-          f"{n_tfs} TFs, {n_genes} target genes")
+    print(
+        f"TF network constructed: {n_pairs} TF-gene pairs, "
+        f"{n_tfs} TFs, {n_genes} target genes"
+    )
 
     return adata
 
@@ -572,6 +598,7 @@ def construct_tf_network(
 # ------------------------------------------------------------------ #
 # Regulon Assignment
 # ------------------------------------------------------------------ #
+
 
 def assign_tf_regulons(
     adata: AnnData,
@@ -626,26 +653,20 @@ def assign_tf_regulons(
     tf_net_filtered = tf_net[tf_net["Gain"] >= reg_thresh].copy()
 
     if strategy == "A":
-        tf_regulons = (
-            tf_net_filtered
-            .groupby("gene", group_keys=False)
-            .apply(lambda x: x.nlargest(min(n_tfs, len(x)), "Gain"))
+        tf_regulons = tf_net_filtered.groupby("gene", group_keys=False).apply(
+            lambda x: x.nlargest(min(n_tfs, len(x)), "Gain")
         )
     elif strategy == "B":
-        tf_regulons = (
-            tf_net_filtered
-            .groupby("tf", group_keys=False)
-            .apply(lambda x: x.nlargest(min(n_genes, len(x)), "Gain"))
+        tf_regulons = tf_net_filtered.groupby("tf", group_keys=False).apply(
+            lambda x: x.nlargest(min(n_genes, len(x)), "Gain")
         )
     else:  # C
         tf_regulons = tf_net_filtered.copy()
 
     # Sort by Gain * sign(Cor) within each TF group
     tf_regulons["reg_score"] = tf_regulons["Gain"] * np.sign(tf_regulons["Cor"])
-    tf_regulons = (
-        tf_regulons
-        .groupby("tf", group_keys=False)
-        .apply(lambda x: x.sort_values("reg_score", ascending=False))
+    tf_regulons = tf_regulons.groupby("tf", group_keys=False).apply(
+        lambda x: x.sort_values("reg_score", ascending=False)
     )
     tf_regulons = tf_regulons.reset_index(drop=True)
 
@@ -653,8 +674,10 @@ def assign_tf_regulons(
     adata = set_hdWGCNA_data(adata, wd, wgcna_name)
 
     n_regulons = tf_regulons["tf"].nunique()
-    print(f"Regulons assigned (strategy={strategy}): "
-          f"{n_regulons} TFs, {len(tf_regulons)} TF-gene pairs")
+    print(
+        f"Regulons assigned (strategy={strategy}): "
+        f"{n_regulons} TFs, {len(tf_regulons)} TF-gene pairs"
+    )
 
     return adata
 
@@ -662,6 +685,7 @@ def assign_tf_regulons(
 # ------------------------------------------------------------------ #
 # Regulon Scores (UCell-like)
 # ------------------------------------------------------------------ #
+
 
 def regulon_scores(
     adata: AnnData,
@@ -719,7 +743,9 @@ def regulon_scores(
 
     # Exclude grey module genes
     if exclude_grey_genes and modules_df is not None:
-        grey_genes = set(modules_df[modules_df["module"] == "grey"]["gene_name"].tolist())
+        grey_genes = set(
+            modules_df[modules_df["module"] == "grey"]["gene_name"].tolist()
+        )
         reg = reg[~reg["gene"].isin(grey_genes) & ~reg["tf"].isin(grey_genes)]
 
     # Build target gene lists per TF
@@ -779,8 +805,9 @@ def regulon_scores(
     wd[score_key] = scores_df
     adata = set_hdWGCNA_data(adata, wd, wgcna_name)
 
-    print(f"Regulon scores computed ({target_type}): "
-          f"{len(tfs_use)} TFs, {n_cells} cells")
+    print(
+        f"Regulon scores computed ({target_type}): {len(tfs_use)} TFs, {n_cells} cells"
+    )
 
     return adata
 
@@ -789,6 +816,7 @@ def regulon_scores(
 try:
     from tqdm import tqdm
 except ImportError:
+
     def tqdm(iterable, **kwargs):
         return iterable
 
@@ -796,6 +824,7 @@ except ImportError:
 # ------------------------------------------------------------------ #
 # Get TF Target Genes
 # ------------------------------------------------------------------ #
+
 
 def get_tf_target_genes(
     adata: AnnData,
@@ -865,7 +894,9 @@ def get_tf_target_genes(
         prev_tfs = prev_tfs | cur_tfs_in_targets
 
     if len(all_rows) == 0:
-        return pd.DataFrame(columns=["tf", "gene", "Gain", "Cover", "Frequency", "Cor", "depth"])
+        return pd.DataFrame(
+            columns=["tf", "gene", "Gain", "Cover", "Frequency", "Cor", "depth"]
+        )
 
     return pd.concat(all_rows, ignore_index=True)
 
@@ -873,6 +904,7 @@ def get_tf_target_genes(
 # ------------------------------------------------------------------ #
 # Module Regulatory Network
 # ------------------------------------------------------------------ #
+
 
 def module_regulatory_network(
     adata: AnnData,
@@ -945,20 +977,26 @@ def module_regulatory_network(
             pos = cur[cur["reg_score"] >= 0]
             neg = cur[cur["reg_score"] < 0]
 
-            records.append({
-                "source": m2,
-                "target": m1,
-                "n_pos": len(pos),
-                "sum_pos": pos["reg_score"].sum() if len(pos) > 0 else 0,
-                "n_neg": len(neg),
-                "sum_neg": neg["reg_score"].sum() if len(neg) > 0 else 0,
-            })
+            records.append(
+                {
+                    "source": m2,
+                    "target": m1,
+                    "n_pos": len(pos),
+                    "sum_pos": pos["reg_score"].sum() if len(pos) > 0 else 0,
+                    "n_neg": len(neg),
+                    "sum_neg": neg["reg_score"].sum() if len(neg) > 0 else 0,
+                }
+            )
 
     reg_df = pd.DataFrame(records)
 
     # Compute averages
-    reg_df["mean_pos"] = np.where(reg_df["n_pos"] > 0, reg_df["sum_pos"] / reg_df["n_pos"], 0)
-    reg_df["mean_neg"] = np.where(reg_df["n_neg"] > 0, reg_df["sum_neg"] / reg_df["n_neg"], 0)
+    reg_df["mean_pos"] = np.where(
+        reg_df["n_pos"] > 0, reg_df["sum_pos"] / reg_df["n_pos"], 0
+    )
+    reg_df["mean_neg"] = np.where(
+        reg_df["n_neg"] > 0, reg_df["sum_neg"] / reg_df["n_neg"], 0
+    )
 
     # Normalize by TF count per module
     tf_counts = module_tfs["module"].value_counts()
@@ -975,6 +1013,7 @@ def module_regulatory_network(
     # Store
     wd["module_regulatory_network"] = reg_df
     from .utils import set_hdWGCNA_data
+
     adata = set_hdWGCNA_data(adata, wd, wgcna_name)
 
     return reg_df
@@ -994,6 +1033,7 @@ def _mod_sort_key(m):
 # ------------------------------------------------------------------ #
 # Overlap Modules with Motifs (Fisher's exact test)
 # ------------------------------------------------------------------ #
+
 
 def overlap_modules_motifs(
     adata: AnnData,
@@ -1059,15 +1099,17 @@ def overlap_modules_motifs(
             union = module_genes | target_set
             jaccard = a / len(union) if len(union) > 0 else 0
 
-            records.append({
-                "module": cur_mod,
-                "tf": tf_name,
-                "color": mod_color,
-                "odds_ratio": odds_ratio,
-                "pval": pval,
-                "Jaccard": jaccard,
-                "size_intersection": a,
-            })
+            records.append(
+                {
+                    "module": cur_mod,
+                    "tf": tf_name,
+                    "color": mod_color,
+                    "odds_ratio": odds_ratio,
+                    "pval": pval,
+                    "Jaccard": jaccard,
+                    "size_intersection": a,
+                }
+            )
 
     overlap_df = pd.DataFrame(records)
 
@@ -1100,6 +1142,7 @@ def overlap_modules_motifs(
 # ------------------------------------------------------------------ #
 # Convenience: Get TF data from adata
 # ------------------------------------------------------------------ #
+
 
 def get_tf_network(adata: AnnData, wgcna_name: str = None) -> Optional[pd.DataFrame]:
     """Get the TF network dataframe."""
@@ -1135,6 +1178,7 @@ def get_regulon_scores(
 # ------------------------------------------------------------------ #
 # Differential Regulon Analysis
 # ------------------------------------------------------------------ #
+
 
 def find_differential_regulons(
     adata: AnnData,
@@ -1277,6 +1321,7 @@ def find_differential_regulons(
 # Enrichr Regulon Analysis
 # ------------------------------------------------------------------ #
 
+
 def run_enrichr_regulons(
     adata: AnnData,
     dbs: List[str] = None,
@@ -1334,8 +1379,11 @@ def run_enrichr_regulons(
         # Get target genes at specified depth
         try:
             targets = get_tf_target_genes(
-                adata, selected_tfs=[tf], depth=depth,
-                target_type="both", wgcna_name=wgcna_name,
+                adata,
+                selected_tfs=[tf],
+                depth=depth,
+                target_type="both",
+                wgcna_name=wgcna_name,
             )
         except (ValueError, KeyError):
             continue
@@ -1347,7 +1395,10 @@ def run_enrichr_regulons(
         pos_targets = targets[targets["Cor"] > 0]["gene"].unique().tolist()
         neg_targets = targets[targets["Cor"] < 0]["gene"].unique().tolist()
 
-        for target_type, gene_list in [("positive", pos_targets), ("negative", neg_targets)]:
+        for target_type, gene_list in [
+            ("positive", pos_targets),
+            ("negative", neg_targets),
+        ]:
             if len(gene_list) < min_genes:
                 continue
 

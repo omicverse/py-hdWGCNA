@@ -450,7 +450,11 @@ def overlap_modules_degs(
             else:
                 jaccard = 0.0
 
-            mod_color = modules_df[modules_df["module"] == cur_mod]["color"].iloc[0] if len(modules_df[modules_df["module"] == cur_mod]) > 0 else "#0072B2"
+            mod_color = (
+                modules_df[modules_df["module"] == cur_mod]["color"].iloc[0]
+                if len(modules_df[modules_df["module"] == cur_mod]) > 0
+                else "#0072B2"
+            )
 
             results.append(
                 {
@@ -488,7 +492,17 @@ def overlap_modules_degs(
             overlap_df["module"], categories=mods, ordered=True
         )
         overlap_df = overlap_df[
-            ["module", "group", "color", "odds_ratio", "pval", "fdr", "Significance", "Jaccard", "size_intersection"]
+            [
+                "module",
+                "group",
+                "color",
+                "odds_ratio",
+                "pval",
+                "fdr",
+                "Significance",
+                "Jaccard",
+                "size_intersection",
+            ]
         ]
 
     return overlap_df
@@ -556,7 +570,9 @@ def module_expr_score(
 
         n_bins = 25
         gene_means = np.array(expr.mean(axis=0)).flatten()
-        bin_edges = np.quantile(gene_means[gene_means > 0], np.linspace(0, 1, n_bins + 1))
+        bin_edges = np.quantile(
+            gene_means[gene_means > 0], np.linspace(0, 1, n_bins + 1)
+        )
         bin_edges[0] = -np.inf
         bin_edges[-1] = np.inf
 
@@ -565,7 +581,12 @@ def module_expr_score(
             gmean = gene_means[fi]
             bin_idx = np.searchsorted(bin_edges, gmean) - 1
             bin_idx = max(0, min(bin_idx, n_bins - 1))
-            candidates = [i for i in all_control_genes if i not in feature_indices and bin_edges[bin_idx] <= gene_means[i] < bin_edges[bin_idx + 1]]
+            candidates = [
+                i
+                for i in all_control_genes
+                if i not in feature_indices
+                and bin_edges[bin_idx] <= gene_means[i] < bin_edges[bin_idx + 1]
+            ]
             if len(candidates) > 0:
                 n_ctrl = min(len(candidates), len(feature_indices))
                 rng = np.random.RandomState(42)
