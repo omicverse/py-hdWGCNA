@@ -106,7 +106,8 @@ def compute_correlation_matrix(
     """
     Compute correlation matrix matching R's cor() / bicor() behavior.
 
-    Uses vectorized numpy operations for O(n^2*d) complexity.
+    Uses Numba JIT when available for significant speedup, falls back
+    to vectorized numpy operations.
 
     Parameters
     ----------
@@ -115,7 +116,7 @@ def compute_correlation_matrix(
     method : str
         'pearson', 'spearman', or 'bicor'
     n_threads : int or None
-        Number of BLAS threads for matrix multiply. None uses BLAS default.
+        Number of threads. None = auto. Only used with numba backend.
 
     Returns
     -------
@@ -129,6 +130,14 @@ def compute_correlation_matrix(
         _os.environ["MKL_NUM_THREADS"] = str(n_threads)
         _os.environ["OPENBLAS_NUM_THREADS"] = str(n_threads)
 
+    from ._kernels import compute_correlation_numba, is_numba_available
+
+    expr_mat = np.asarray(expr_mat, dtype=np.float64)
+
+    if is_numba_available():
+        return compute_correlation_numba(expr_mat, method=method, parallel=True)
+
+    # Fallback: numpy
     n_genes, n_samples = expr_mat.shape
 
     if method == "spearman":
@@ -136,16 +145,6 @@ def compute_correlation_matrix(
 
         ranked = rankdata(expr_mat, axis=1).astype(np.float64)
         expr_mat = ranked
-        method = "pearson"
-
-    expr_mat = np.asarray(expr_mat, dtype=np.float64)
-
-    nan_mask = np.isnan(expr_mat)
-    if nan_mask.any():
-        expr_mat = expr_mat.copy()
-        col_means = np.nanmean(expr_mat, axis=1, keepdims=True)
-        for i in range(n_genes):
-            expr_mat[i, nan_mask[i]] = col_means[i, 0]
 
     if method == "bicor":
         return _bicor_vectorized(expr_mat)
@@ -206,6 +205,9 @@ def compute_tom(
 ) -> np.ndarray:
     """Compute Topological Overlap Matrix (TOM).
 
+    Uses Numba JIT with OpenMP parallelism when available for
+    significant speedup on multi-core systems. Falls back to numpy.
+
     Parameters
     ----------
     adj_matrix : np.ndarray
@@ -215,9 +217,7 @@ def compute_tom(
     tom_denom : str
         Denominator type: 'min' or 'max'
     n_threads : int or None
-        Number of threads for BLAS matrix multiply. None uses BLAS default.
-        Note: numpy BLAS (MKL/OpenBLAS) already uses multiple threads
-        internally for the matrix multiply.
+        Number of threads. None = auto. Only used with numba backend.
 
     Returns
     -------
@@ -231,8 +231,12 @@ def compute_tom(
         _os.environ["MKL_NUM_THREADS"] = str(n_threads)
         _os.environ["OPENBLAS_NUM_THREADS"] = str(n_threads)
 
-    n = adj_matrix.shape[0]  # noqa: F841
+    from ._kernels import compute_tom_numba, is_numba_available
 
+    if is_numba_available():
+        return compute_tom_numba(adj_matrix, tom_type=tom_type, tom_denom=tom_denom)
+
+    # Fallback: numpy
     adj_work = adj_matrix.astype(np.float64, copy=True)
     np.fill_diagonal(adj_work, 0.0)
 
