@@ -373,6 +373,7 @@ def construct_tf_network(
     adata: AnnData,
     model_params: dict = None,
     nfold: int = 5,
+    n_threads: int | None = None,
     wgcna_name: str = None,
 ) -> AnnData:
     """
@@ -482,47 +483,41 @@ def construct_tf_network(
     # Build gene name -> index mapping
     gene_name_to_idx = {g: i for i, g in enumerate(gene_names)}
 
-    for idx, cur_gene in enumerate(tqdm(genes_use, desc="TF Network")):
-        # Get candidate TFs for this gene
+    def _process_single_gene(cur_gene):
+        """Process a single gene for TF network construction."""
         if cur_gene not in motif_matrix.index:
-            continue
+            return None, None
 
         gene_row = motif_matrix.loc[cur_gene]
         active_motifs = gene_row[gene_row > 0].index.tolist()
 
-        # Map motifs to TF gene names
         cur_tfs = []
         for mid in active_motifs:
             if mid in motif_gene_to_id:
                 cur_tfs.append(motif_gene_to_id[mid])
         cur_tfs = list(set(cur_tfs))
 
-        # Remove self-regulation
         if cur_gene in cur_tfs:
             cur_tfs.remove(cur_gene)
 
-        # Only keep TFs that are in the expression data
         cur_tfs = [tf for tf in cur_tfs if tf in gene_name_to_idx]
 
         if len(cur_tfs) < 2:
-            continue
+            return None, None
 
-        # Get expression data: dat_expr is (n_genes, n_cells)
         tf_indices = [gene_name_to_idx[tf] for tf in cur_tfs]
         gene_idx = gene_name_to_idx[cur_gene]
 
-        x_vars = dat_expr[tf_indices, :].T  # (n_cells, n_tfs)
-        y_var = dat_expr[gene_idx, :]  # (n_cells,)
+        x_vars = dat_expr[tf_indices, :].T
+        y_var = dat_expr[gene_idx, :]
 
         if np.all(y_var == 0):
-            continue
+            return None, None
 
-        # Pearson correlation between each TF and the gene
         tf_cor = np.array(
             [np.corrcoef(x_vars[:, j], y_var)[0, 1] for j in range(x_vars.shape[1])]
         )
 
-        # XGBoost CV
         dtrain = xgb.DMatrix(x_vars, label=y_var, feature_names=cur_tfs)
 
         xgb_cv = xgb.cv(
@@ -534,7 +529,6 @@ def construct_tf_network(
             verbose_eval=False,
         )
 
-        # Get best iteration and train final model for importance
         best_round = int(xgb_cv["test-rmse-mean"].idxmin()) + 1
         bst = xgb.train(
             params=model_params,
@@ -542,12 +536,9 @@ def construct_tf_network(
             num_boost_round=best_round,
         )
 
-        # Get evaluation metrics
         xgb_eval = xgb_cv.copy()
         xgb_eval["variable"] = cur_gene
-        eval_list.append(xgb_eval)
 
-        # Extract feature importance (Gain, Cover, Frequency/Weight)
         gain_scores = bst.get_score(importance_type="gain")
         cover_scores = bst.get_score(importance_type="cover")
         freq_scores = bst.get_score(importance_type="weight")
@@ -566,7 +557,34 @@ def construct_tf_network(
             )
         imp_df = pd.DataFrame(imp_records)
         imp_df = imp_df.sort_values("Gain", ascending=False).reset_index(drop=True)
-        importance_list.append(imp_df)
+        return imp_df, xgb_eval
+
+    # Parallelize across genes using threads
+    from .parallel import _get_max_workers
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    n_workers = _get_max_workers(n_threads)
+    if n_workers > 1 and len(genes_use) > 1:
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            futures = {
+                executor.submit(_process_single_gene, gene): gene
+                for gene in genes_use
+            }
+            for future in tqdm(
+                as_completed(futures), total=len(futures), desc="TF Network"
+            ):
+                imp_df, xgb_eval = future.result()
+                if imp_df is not None:
+                    importance_list.append(imp_df)
+                if xgb_eval is not None:
+                    eval_list.append(xgb_eval)
+    else:
+        for cur_gene in tqdm(genes_use, desc="TF Network"):
+            imp_df, xgb_eval = _process_single_gene(cur_gene)
+            if imp_df is not None:
+                importance_list.append(imp_df)
+            if xgb_eval is not None:
+                eval_list.append(xgb_eval)
 
     if len(importance_list) == 0:
         warnings.warn("No TF-gene interactions found. Check motif data.")
@@ -692,6 +710,7 @@ def regulon_scores(
     target_type: str = "positive",
     cor_thresh: float = 0.05,
     exclude_grey_genes: bool = True,
+    n_threads: int | None = None,
     wgcna_name: str = None,
 ) -> AnnData:
     """
@@ -782,15 +801,11 @@ def regulon_scores(
         if n_targets == 0:
             continue
 
-        # Compute ranks per cell
-        ranks = np.zeros_like(target_expr)
-        for i in range(n_cells):
-            row = target_expr[i, :]
-            # Rank from 0 to n_genes-1 (fractional rank)
-            sorted_idx = np.argsort(row)
-            ranks_sorted = np.empty_like(sorted_idx, dtype=np.float64)
-            ranks_sorted[sorted_idx] = np.arange(n_targets, dtype=np.float64)
-            ranks[i, :] = ranks_sorted
+        # Compute ranks per cell (vectorized)
+        sorted_indices = np.argsort(target_expr, axis=1)
+        ranks = np.empty_like(target_expr, dtype=np.float64)
+        row_idx = np.arange(n_cells)[:, np.newaxis]
+        ranks[row_idx, sorted_indices] = np.arange(n_targets, dtype=np.float64)
 
         # Normalize ranks to [0, 1]
         ranks_norm = ranks / max(n_targets - 1, 1)

@@ -292,6 +292,7 @@ class HDWGCNA:
         power_range: list = None,
         network_type: str = "signed",
         cor_method: str = "bicor",
+        n_threads: int | None = None,
         wgcna_name: str = None,
     ):
         """Test different soft-thresholding powers for scale-free topology fit.
@@ -304,6 +305,8 @@ class HDWGCNA:
             'signed', 'unsigned', or 'signed hybrid'
         cor_method : str
             Correlation method: 'bicor', 'pearson', or 'spearman'
+        n_threads : int or None
+            Number of threads for parallel computation. None = auto.
         wgcna_name : str
             Name of hdWGCNA experiment
 
@@ -317,6 +320,7 @@ class HDWGCNA:
             power_range=power_range,
             network_type=network_type,
             cor_method=cor_method,
+            n_threads=n_threads,
             wgcna_name=wgcna_name,
         )
         return self
@@ -333,6 +337,7 @@ class HDWGCNA:
         pamRespectsDendro: bool = True,
         pamStage: bool = False,
         mergeCutHeight: float = 0.2,
+        n_threads: int | None = None,
         wgcna_name: str = None,
         **kwargs,
     ):
@@ -360,6 +365,8 @@ class HDWGCNA:
             Whether to perform PAM stage
         mergeCutHeight : float
             Cut height for merging
+        n_threads : int or None
+            Number of threads for parallel computation. None = auto.
         wgcna_name : str
             Name of hdWGCNA experiment
         **kwargs
@@ -382,6 +389,7 @@ class HDWGCNA:
             pamRespectsDendro=pamRespectsDendro,
             pamStage=pamStage,
             mergeCutHeight=mergeCutHeight,
+            n_threads=n_threads,
             wgcna_name=wgcna_name,
             **kwargs,
         )
@@ -722,7 +730,9 @@ class HDWGCNA:
         )
         return self
 
-    def construct_tf_network(self, model_params=None, nfold=5, wgcna_name=None):
+    def construct_tf_network(
+        self, model_params=None, nfold=5, n_threads=None, wgcna_name=None
+    ):
         """Construct directed TF-gene network using XGBoost.
 
         Parameters
@@ -731,6 +741,8 @@ class HDWGCNA:
             XGBoost parameters
         nfold : int
             CV folds
+        n_threads : int or None
+            Number of threads for parallel gene processing. None = auto.
         wgcna_name : str
             Experiment name
 
@@ -742,7 +754,11 @@ class HDWGCNA:
         from .tf_network import construct_tf_network as _ctf
 
         self.adata = _ctf(
-            self.adata, model_params=model_params, nfold=nfold, wgcna_name=wgcna_name
+            self.adata,
+            model_params=model_params,
+            nfold=nfold,
+            n_threads=n_threads,
+            wgcna_name=wgcna_name,
         )
         return self
 
@@ -786,6 +802,7 @@ class HDWGCNA:
         target_type="positive",
         cor_thresh=0.05,
         exclude_grey_genes=True,
+        n_threads=None,
         wgcna_name=None,
     ):
         """Compute regulon activity scores.
@@ -798,6 +815,8 @@ class HDWGCNA:
             Correlation threshold
         exclude_grey_genes : bool
             Exclude grey module genes
+        n_threads : int or None
+            Number of threads for parallel computation. None = auto.
         wgcna_name : str
             Experiment name
 
@@ -813,6 +832,7 @@ class HDWGCNA:
             target_type=target_type,
             cor_thresh=cor_thresh,
             exclude_grey_genes=exclude_grey_genes,
+            n_threads=n_threads,
             wgcna_name=wgcna_name,
         )
         return self

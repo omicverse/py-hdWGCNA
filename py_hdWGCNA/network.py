@@ -15,6 +15,7 @@ def test_soft_powers(
     power_range: list = None,
     network_type: str = "signed",
     cor_method: str = "pearson",
+    n_threads: int | None = None,
     wgcna_name: str = None,
     **kwargs,
 ):
@@ -33,6 +34,8 @@ def test_soft_powers(
         Network type: 'signed', 'unsigned', or 'signed hybrid'
     cor_method : str
         Correlation method: 'bicor', 'pearson', or 'spearman'
+    n_threads : int or None
+        Number of threads for parallel power testing. None = auto.
     wgcna_name : str
         Name of hdWGCNA experiment
     **kwargs
@@ -102,26 +105,45 @@ def test_soft_powers(
     results_list = []
 
     chunk_size = 100
-    for power in power_range:
+
+    def _compute_single_power(power):
         k = np.zeros(n_genes, dtype=np.float64)
         for ci in range(0, n_genes, chunk_size):
             ci_end = min(ci + chunk_size, n_genes)
             chunk = log_cor[ci:ci_end, :]
             k[ci:ci_end] = np.exp(power * chunk).sum(axis=1)
-
         sft = scale_free_fit_index_full(k, nBreaks=10)
+        return {
+            "Power": power,
+            "SFT.R.sq": sft["R2"],
+            "slope": sft["slope"],
+            "truncated.R.sq": sft["truncated_R2"],
+            "mean.k.": float(np.mean(k)),
+            "median.k.": float(np.median(k)),
+            "max.k.": float(np.max(k)),
+        }
 
-        results_list.append(
-            {
-                "Power": power,
-                "SFT.R.sq": sft["R2"],
-                "slope": sft["slope"],
-                "truncated.R.sq": sft["truncated_R2"],
-                "mean.k.": float(np.mean(k)),
-                "median.k.": float(np.median(k)),
-                "max.k.": float(np.max(k)),
-            }
-        )
+    # Parallelize across power values using threads
+    # (numpy releases GIL during matrix operations)
+    from .parallel import _get_max_workers
+    from concurrent.futures import ThreadPoolExecutor
+
+    n_workers = _get_max_workers(n_threads)
+    if n_workers > 1 and len(power_range) > 1:
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            results_list = list(executor.map(_compute_single_power, power_range))
+    else:
+        for power in power_range:
+            results_list.append(_compute_single_power(power))
+
+    for r in results_list:
+        r.setdefault("Power", 0)
+        r.setdefault("SFT.R.sq", 0.0)
+        r.setdefault("slope", 0.0)
+        r.setdefault("truncated.R.sq", 0.0)
+        r.setdefault("mean.k.", 0.0)
+        r.setdefault("median.k.", 0.0)
+        r.setdefault("max.k.", 0.0)
 
     power_table = pd.DataFrame(results_list)
 
@@ -167,7 +189,7 @@ def construct_network(
     detectCutHeight: float = 0.995,
     minKMEtoStay: float = 0,
     mergeCutHeight: float = 0.2,
-    n_threads: int = 1,
+    n_threads: int | None = None,
     verbose: int = 3,
     saveTOMs: bool = False,
     loadTOMs: bool = False,
@@ -270,7 +292,9 @@ def construct_network(
 
     cor_method = wgcna_data.get("cor_method", "pearson")
     print(f"Computing correlation matrix ({cor_method})...")
-    cor_matrix = compute_correlation_matrix(dat_expr, method=cor_method)
+    cor_matrix = compute_correlation_matrix(
+        dat_expr, method=cor_method, n_threads=n_threads
+    )
     np.clip(cor_matrix, -1, 1, out=cor_matrix)
     print(
         f"  Cor matrix shape: {cor_matrix.shape}, range=[{cor_matrix.min():.4f}, {cor_matrix.max():.4f}]"
@@ -285,7 +309,9 @@ def construct_network(
     del cor_matrix
 
     print("Computing Topological Overlap Matrix (TOM)...")
-    tom_dissim = compute_tom(adj_matrix, tom_type=tom_type, tom_denom=tom_denom)
+    tom_dissim = compute_tom(
+        adj_matrix, tom_type=tom_type, tom_denom=tom_denom, n_threads=n_threads
+    )
     print(
         f"  TOM dissim shape: {tom_dissim.shape}, range=[{tom_dissim.min():.4f}, {tom_dissim.max():.4f}]"
     )
@@ -361,7 +387,9 @@ def construct_network(
         }
     )
 
-    kME_all = compute_kme(dat_expr, MEs_merged, method=cor_method)
+    kME_all = compute_kme(
+        dat_expr, MEs_merged, method=cor_method, n_threads=n_threads
+    )
 
     kME_cols = {}
 

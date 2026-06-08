@@ -100,7 +100,9 @@ def _bicor_vectorized(x: np.ndarray) -> np.ndarray:
     return bicor
 
 
-def compute_correlation_matrix(expr_mat: np.ndarray, method="pearson") -> np.ndarray:
+def compute_correlation_matrix(
+    expr_mat: np.ndarray, method: str = "pearson", n_threads: int | None = None
+) -> np.ndarray:
     """
     Compute correlation matrix matching R's cor() / bicor() behavior.
 
@@ -112,20 +114,27 @@ def compute_correlation_matrix(expr_mat: np.ndarray, method="pearson") -> np.nda
         Genes x Samples matrix
     method : str
         'pearson', 'spearman', or 'bicor'
+    n_threads : int or None
+        Number of BLAS threads for matrix multiply. None uses BLAS default.
 
     Returns
     -------
     np.ndarray
         Correlation matrix (genes x genes)
     """
+    import os as _os
+
+    if n_threads is not None and n_threads > 0:
+        _os.environ["OMP_NUM_THREADS"] = str(n_threads)
+        _os.environ["MKL_NUM_THREADS"] = str(n_threads)
+        _os.environ["OPENBLAS_NUM_THREADS"] = str(n_threads)
+
     n_genes, n_samples = expr_mat.shape
 
     if method == "spearman":
         from scipy.stats import rankdata
 
-        ranked = np.zeros_like(expr_mat)
-        for i in range(n_genes):
-            ranked[i, :] = rankdata(expr_mat[i, :])
+        ranked = rankdata(expr_mat, axis=1).astype(np.float64)
         expr_mat = ranked
         method = "pearson"
 
@@ -190,9 +199,39 @@ def soft_threshold(
 
 
 def compute_tom(
-    adj_matrix: np.ndarray, tom_type: str = "signed", tom_denom: str = "min"
+    adj_matrix: np.ndarray,
+    tom_type: str = "signed",
+    tom_denom: str = "min",
+    n_threads: int | None = None,
 ) -> np.ndarray:
-    __n = adj_matrix.shape[0]  # noqa: F841
+    """Compute Topological Overlap Matrix (TOM).
+
+    Parameters
+    ----------
+    adj_matrix : np.ndarray
+        Adjacency matrix (genes x genes)
+    tom_type : str
+        TOM type: 'signed' or 'unsigned'
+    tom_denom : str
+        Denominator type: 'min' or 'max'
+    n_threads : int or None
+        Number of threads for BLAS matrix multiply. None uses BLAS default.
+        Note: numpy BLAS (MKL/OpenBLAS) already uses multiple threads
+        internally for the matrix multiply.
+
+    Returns
+    -------
+    np.ndarray
+        TOM dissimilarity matrix
+    """
+    import os as _os
+
+    if n_threads is not None and n_threads > 0:
+        _os.environ["OMP_NUM_THREADS"] = str(n_threads)
+        _os.environ["MKL_NUM_THREADS"] = str(n_threads)
+        _os.environ["OPENBLAS_NUM_THREADS"] = str(n_threads)
+
+    n = adj_matrix.shape[0]  # noqa: F841
 
     adj_work = adj_matrix.astype(np.float64, copy=True)
     np.fill_diagonal(adj_work, 0.0)
@@ -410,7 +449,10 @@ def compute_module_eigengenes(
 
 
 def compute_kme(
-    expr_mat: np.ndarray, MEs: np.ndarray, method: str = "pearson"
+    expr_mat: np.ndarray,
+    MEs: np.ndarray,
+    method: str = "pearson",
+    n_threads: int | None = None,
 ) -> np.ndarray:
     n_genes = expr_mat.shape[0]
     n_modules = MEs.shape[0]
