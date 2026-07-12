@@ -877,7 +877,12 @@ def plot_kmes(
         ax = axes[row, col]
 
         mod_genes = mods_df[mods_df["module"] == cur_mod].copy()
-        mod_genes = mod_genes.sort_values(kme_col, ascending=True)
+        # rank by THIS module's own kME_<module> column (fall back to the
+        # generic column if a per-module one is not present)
+        cur_kme_col = f"kME_{cur_mod}"
+        if cur_kme_col not in mod_genes.columns:
+            cur_kme_col = kme_col
+        mod_genes = mod_genes.sort_values(cur_kme_col, ascending=True)
 
         top_n = min(n_hubs, len(mod_genes))
         display_genes = mod_genes.tail(top_n)
@@ -887,7 +892,7 @@ def plot_kmes(
         y_pos = np.arange(len(display_genes))
         ax.barh(
             y_pos,
-            display_genes[kme_col].values,
+            display_genes[cur_kme_col].values,
             color=cur_color,
             edgecolor=cur_color,
             height=0.8,
@@ -1243,8 +1248,18 @@ def module_network_plot(
     hub_df = modules_df[modules_df["module"].isin(plot_mods)].copy()
     kme_cols = [c for c in hub_df.columns if "kME" in c.lower()]
     if kme_cols:
-        hub_df = hub_df.sort_values(["module", kme_cols[0]], ascending=[True, False])
-        hub_df = hub_df.groupby("module").head(n_hubs_total)
+        # Rank each module's genes by that module's OWN kME_<module> column
+        # (fall back to the first kME column if a per-module one is missing),
+        # then keep the top n_hubs_total per module. Using a single fixed kME
+        # column for every module puts the wrong genes on the rings.
+        parts = []
+        for _m in plot_mods:
+            _sub = hub_df[hub_df["module"] == _m]
+            _own = f"kME_{_m}"
+            _col = _own if _own in _sub.columns else kme_cols[0]
+            parts.append(_sub.sort_values(_col, ascending=False).head(n_hubs_total))
+        if parts:
+            hub_df = pd.concat(parts, axis=0)
 
     gene_to_tom_idx = {g: i for i, g in enumerate(tom_genes)}
 
