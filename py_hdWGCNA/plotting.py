@@ -4211,6 +4211,32 @@ def do_hub_gene_heatmap(
     return fig
 
 
+def _intramodular_degree(wd: dict, mod: str, modules_df: pd.DataFrame = None):
+    """Intramodular connectivity (degree) for the genes in one module.
+
+    degree = sum of TOM connections from each gene to the OTHER genes in the
+    same module; weighted_degree = degree scaled to [0, 1]. Returns
+    (degree, weighted_degree) as pandas Series indexed by gene_name, or None if
+    no TOM is available. (This port stores kME but not a degree table, so we
+    compute it here from the TOM.)"""
+    if modules_df is None:
+        modules_df = wd.get("modules_df")
+    genes = modules_df[modules_df["module"] == mod]["gene_name"].tolist()
+    TOM, tom_genes = _get_tom_similarity(wd)
+    if TOM is None:
+        return None
+    tom_pos = {g: i for i, g in enumerate(tom_genes)}
+    idx = [tom_pos[g] for g in genes if g in tom_pos]
+    genes = [tom_genes[i] for i in idx]
+    if len(idx) < 2:
+        return None
+    sub = np.asarray(TOM)[np.ix_(idx, idx)].astype(float).copy()
+    np.fill_diagonal(sub, 0.0)
+    deg = sub.sum(axis=1)
+    wdeg = deg / deg.max() if deg.max() > 0 else deg
+    return pd.Series(deg, index=genes), pd.Series(wdeg, index=genes)
+
+
 def module_topology_heatmap(
     adata: AnnData,
     mod: str,
@@ -4267,11 +4293,15 @@ def module_topology_heatmap(
             cur_genes = cur_genes_df["gene_name"].tolist()
     elif order_by == "degree":
         degrees = wd.get("degrees")
-        if degrees is not None and "degree" in degrees.columns:
+        if degrees is not None and "degree" in getattr(degrees, "columns", []):
             cur_deg = degrees[degrees["module"] == mod].sort_values(
                 "degree", ascending=False
             )
             cur_genes = cur_deg["gene_name"].tolist()
+        else:  # no precomputed degree table -> compute from the TOM
+            _d = _intramodular_degree(wd, mod, modules_df)
+            if _d is not None:
+                cur_genes = _d[0].sort_values(ascending=False).index.tolist()
 
     if matrix == "TOM":
         tom_mat, tom_genes = _get_tom_similarity(wd)
@@ -4295,20 +4325,23 @@ def module_topology_heatmap(
     else:
         raise ValueError("matrix must be 'TOM' or 'Cor'")
 
-    mat[np.tril_indices(mat.shape[0])] = 0
-
+    mat = np.asarray(mat, dtype=float).copy()
+    # keep only the upper triangle; blank out the rest (lower triangle + diagonal)
+    upper = mat[np.triu_indices(mat.shape[0], k=1)]
     if isinstance(plot_max, str) and plot_max.startswith("q"):
         q = int(plot_max[1:]) / 100.0
-        plot_max = np.quantile(mat[mat > 0], q) if np.any(mat > 0) else 1.0
+        plot_max = float(np.quantile(upper[upper > 0], q)) if np.any(upper > 0) else 1.0
     if isinstance(plot_min, str) and plot_min.startswith("q"):
         q = int(plot_min[1:]) / 100.0
-        plot_min = np.quantile(mat[mat > 0], q) if np.any(mat > 0) else 0.0
+        plot_min = float(np.quantile(upper[upper > 0], q)) if np.any(upper > 0) else 0.0
 
-    mat = np.clip(mat, plot_min, plot_max)
+    mat[np.tril_indices(mat.shape[0])] = np.nan          # blank lower triangle + diag
+    mat = np.clip(mat, plot_min, plot_max)               # np.clip preserves NaN
 
     _setup_publication_style()
     fig, ax = plt.subplots(figsize=(6, 6), dpi=300)
-    cmap = LinearSegmentedColormap.from_list("custom", [low_color, high_color])
+    cmap = LinearSegmentedColormap.from_list("custom", [low_color, high_color]).copy()
+    cmap.set_bad("white")                                 # NaN cells drawn blank
     im = ax.imshow(
         mat,
         cmap=cmap,
@@ -4385,16 +4418,28 @@ def module_topology_barplot(
             raise ValueError(f"kME column {kme_col} not found.")
     elif features in ("degree", "weighted_degree"):
         degrees = wd.get("degrees")
-        if degrees is None:
-            raise ValueError(
-                "Degree data not found. Run ModuleConnectivity with TOM first."
+        if degrees is not None and features in getattr(degrees, "columns", []):
+            plot_df = degrees[degrees["module"] == mod][
+                ["gene_name", features]
+            ].rename(columns={features: "value"})
+        else:  # compute intramodular degree from the TOM
+            _d = _intramodular_degree(wd, mod, modules_df)
+            if _d is None:
+                raise ValueError(
+                    "Degree requires a TOM. Run construct_network() first."
+                )
+            deg, wdeg = _d
+            s = wdeg if features == "weighted_degree" else deg
+            plot_df = s.rename("value").reset_index().rename(
+                columns={"index": "gene_name"}
             )
-        plot_df = degrees[degrees["module"] == mod][["gene_name", features]].rename(
-            columns={features: "value"}
-        )
         plot_df = plot_df.sort_values("value", ascending=False)
         label = "Degree"
-        plot_limits = (0, plot_df["value"].max() if len(plot_df) > 0 else 1)
+        plot_limits = (
+            (0, 1)
+            if features == "weighted_degree"
+            else (0, plot_df["value"].max() if len(plot_df) > 0 else 1)
+        )
     else:
         raise ValueError("features must be 'kME', 'degree', or 'weighted_degree'")
 
@@ -4423,109 +4468,134 @@ def module_topology_barplot(
 
 
 def plot_module_preservation_lollipop(
-    adata: AnnData,
-    preservation_name: str,
-    features: str = None,
-    fdr: bool = True,
+    preservation=None,
+    adata: AnnData = None,
+    preservation_name: str = None,
+    feature: str = "Zsummary",
+    module_colors: dict = None,
+    thresholds=(2, 10),
     wgcna_name: str = None,
     save_path: str = None,
 ):
     """
-    Lollipop plot for module preservation statistics.
+    Ranked lollipop plot of module-preservation statistics.
 
-    Replicates R's PlotModulePreservationLollipop function.
+    Python analog of R's PlotModulePreservationLollipop. Works directly with the
+    DataFrame returned by ``module_preservation()`` (columns: module, Zsummary,
+    medianRank, preservation, n_genes). Modules are ranked by ``feature``; when
+    ``feature`` is a Z-summary the "not preserved" (Z < thresholds[0]) and
+    "moderate" (thresholds[0] <= Z < thresholds[1]) regions are shaded, and point
+    size encodes the number of genes.
 
     Parameters
     ----------
-    adata : AnnData
-    preservation_name : str
-        Name of the module preservation analysis
-    features : str
-        Feature to plot (default: Zsummary.pres)
-    fdr : bool
-    wgcna_name : str
-    save_path : str
+    preservation : pandas.DataFrame, optional
+        Output of ``module_preservation()``. If omitted, it is looked up from
+        ``adata`` via ``preservation_name``.
+    adata : AnnData, optional
+        Used for per-module colors, and to look up a stored preservation table.
+    preservation_name : str, optional
+        Key in ``adata.uns['hdWGCNA'][wgcna_name]['module_preservation']``.
+    feature : str
+        Column to plot (default 'Zsummary'; falls back to 'Zsummary.pres').
+    module_colors : dict, optional
+        module -> color; overrides colors taken from ``adata``.
+    thresholds : tuple
+        (low, high) Z-summary thresholds for the shaded regions.
+    wgcna_name, save_path : see other plotting functions.
     """
-    wd = _get_wd(adata, wgcna_name)
-    modules_df = wd.get("modules_df")
-    if modules_df is None:
-        raise ValueError("No module data found.")
+    # ---- resolve the preservation table ----
+    df, modules_df = None, None
+    if preservation is not None:
+        df = preservation.copy()
+    if df is None and adata is not None:
+        wd = _get_wd(adata, wgcna_name)
+        modules_df = wd.get("modules_df")
+        store = wd.get("module_preservation", {}) or {}
+        cand = store.get(preservation_name) if preservation_name else None
+        if isinstance(cand, dict):          # tolerate an R-style {'Z': df}
+            cand = cand.get("Z")
+        if cand is not None:
+            df = cand.copy()
+    if df is None:
+        raise ValueError(
+            "Provide `preservation` (the DataFrame from module_preservation()) "
+            "or `adata` + `preservation_name`."
+        )
 
-    mod_pres = wd.get("module_preservation", {}).get(preservation_name)
-    if mod_pres is None:
-        raise ValueError(f"Module preservation '{preservation_name}' not found.")
+    if "module" not in df.columns:
+        df = df.copy()
+        df["module"] = df.index
 
-    unique_mods = modules_df[["module", "color"]].drop_duplicates()
-    mod_color_dict = dict(zip(unique_mods["module"], unique_mods["color"]))
+    # feature column (be forgiving about the exact name)
+    if feature not in df.columns:
+        for alt in ("Zsummary", "Zsummary.pres", "Z"):
+            if alt in df.columns:
+                feature = alt
+                break
+    if feature not in df.columns:
+        raise ValueError(
+            f"Feature '{feature}' not in preservation columns: {list(df.columns)}"
+        )
 
-    if features is None:
-        features = "Zsummary.pres"
+    size_col = next(
+        (c for c in ("n_genes", "moduleSize", "nVarsPresent") if c in df.columns), None
+    )
 
-    if "Z" in mod_pres:
-        z_df = mod_pres["Z"]
-        if isinstance(z_df, pd.DataFrame) and features in z_df.columns:
-            plot_df = (
-                z_df[[features, "moduleSize"]].copy()
-                if "moduleSize" in z_df.columns
-                else z_df[[features]].copy()
-            )
-            plot_df.columns = [
-                c if c == features else "moduleSize" for c in plot_df.columns
-            ]
-            plot_df["module"] = z_df.index
-            plot_df = plot_df[~plot_df["module"].isin(["gold", "grey"])]
-            plot_df = plot_df.sort_values(features)
-            plot_df["module"] = pd.Categorical(
-                plot_df["module"], categories=plot_df["module"], ordered=True
-            )
+    df = df[~df["module"].astype(str).isin(["gold", "grey"])]
+    df = df.dropna(subset=[feature])
+    df = df.sort_values(feature, ascending=True).reset_index(drop=True)
+    if len(df) == 0:
+        raise ValueError("No modules to plot after filtering.")
 
-            _setup_publication_style()
-            fig, ax = plt.subplots(figsize=(5, max(2, len(plot_df) * 0.35)), dpi=300)
+    # ---- module colors ----
+    if modules_df is None and adata is not None:
+        modules_df = _get_wd(adata, wgcna_name).get("modules_df")
+    color_map = {}
+    if module_colors:
+        color_map.update(module_colors)
+    elif modules_df is not None and "color" in modules_df.columns:
+        color_map = dict(zip(modules_df["module"], modules_df["color"]))
+    colors = [_to_mpl_color(color_map.get(m, "#7F7F7F")) for m in df["module"]]
 
-            y_pos = range(len(plot_df))
-            colors = [
-                _to_mpl_color(mod_color_dict.get(m, "gold")) for m in plot_df["module"]
-            ]
-            sizes = (
-                plot_df["moduleSize"].values
-                if "moduleSize" in plot_df.columns
-                else np.ones(len(plot_df)) * 20
-            )
-
-            for i, (_, row) in enumerate(plot_df.iterrows()):
-                ax.plot(
-                    [0, row[features]],
-                    [i, i],
-                    color=colors[i],
-                    alpha=0.5,
-                    linewidth=0.5,
-                )
-            ax.scatter(
-                plot_df[features],
-                y_pos,
-                c=colors,
-                s=sizes * 2,
-                edgecolors="black",
-                linewidths=0.3,
-                zorder=3,
-            )
-
-            ax.axvline(
-                x=2, color="grey75", linestyle="-", linewidth=5, alpha=0.5, zorder=0
-            )
-            ax.set_yticks(y_pos)
-            ax.set_yticklabels(plot_df["module"].values, fontsize=7)
-            ax.set_xlabel(features, fontsize=9)
-            ax.set_ylabel("")
-            ax.set_title(features, fontsize=10)
-        else:
-            raise ValueError(f"Feature {features} not found in preservation results.")
+    # point size ~ number of genes
+    if size_col:
+        sizes = df[size_col].astype(float).values
+        smin, smax = np.nanmin(sizes), np.nanmax(sizes)
+        psize = (
+            40 + 160 * (sizes - smin) / (smax - smin)
+            if smax > smin
+            else np.full(len(df), 90.0)
+        )
     else:
-        raise ValueError("Module preservation data format not recognized.")
+        psize = np.full(len(df), 90.0)
 
+    _setup_publication_style()
+    fig, ax = plt.subplots(figsize=(5, max(2, len(df) * 0.35)), dpi=300)
+
+    # shaded Z-summary regions (only meaningful for a Z-summary feature)
+    if "z" in feature.lower():
+        lo, hi = thresholds
+        ax.axvspan(0, lo, color="0.75", alpha=0.6, zorder=0)   # not preserved
+        ax.axvspan(lo, hi, color="0.92", alpha=0.6, zorder=0)  # moderate
+
+    y = np.arange(len(df))
+    vals = df[feature].values
+    for i, v in enumerate(vals):
+        ax.plot([0, v], [i, i], color=colors[i], alpha=0.6, linewidth=0.8, zorder=2)
+    ax.scatter(
+        vals, y, c=colors, s=psize, edgecolors="black", linewidths=0.4, zorder=3
+    )
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(df["module"].astype(str).values, fontsize=7)
+    ax.set_xlabel(feature, fontsize=9)
+    ax.set_ylabel("")
+    ax.set_title(feature, fontsize=10, fontweight="bold")
+    ax.set_xlim(left=0)
     for spine in ax.spines.values():
         spine.set_visible(True)
-        spine.set_linewidth(0.5)
+        spine.set_linewidth(0.6)
     fig.tight_layout(pad=0.02)
 
     if save_path:
