@@ -222,6 +222,30 @@ def compute_tom(
     return dissTOM
 
 
+def _prepare_dynamic_tree_cut(_dtc):
+    """Return ``cutreeHybrid`` with compatibility shims applied to its globals.
+
+    dynamicTreeCut relies on ``df_apply`` being present in its module namespace and
+    indexes arrays with the output of scipy's ``rankdata(method="ordinal")``. scipy
+    >= 1.18 returns float64 ranks, which NumPy >= 2 rejects as array indices
+    (IndexError). Ordinal ranks are always whole numbers, so coerce them back to an
+    integer dtype to keep the package working across scipy/NumPy versions.
+    """
+    _func = _dtc.cutreeHybrid
+    g = _func.__globals__
+    if "df_apply" not in g:
+        g["df_apply"] = _dtc.df_apply
+    if not g.get("_hdwgcna_rankdata_patched"):
+        _orig_rankdata = g["rankdata"]
+
+        def _int_rankdata(*args, **kwargs):
+            return np.asarray(_orig_rankdata(*args, **kwargs)).astype(np.intp)
+
+        g["rankdata"] = _int_rankdata
+        g["_hdwgcna_rankdata_patched"] = True
+    return _func
+
+
 def hclust_and_cut(
     tom_dissim: np.ndarray,
     deepSplit: int = 4,
@@ -243,9 +267,7 @@ def hclust_and_cut(
 
     import dynamicTreeCut as _dtc
 
-    _func = _dtc.cutreeHybrid
-    if "df_apply" not in _func.__globals__:
-        _func.__globals__["df_apply"] = _dtc.df_apply
+    _func = _prepare_dynamic_tree_cut(_dtc)
     kwargs = dict(
         deepSplit=deepSplit,
         minClusterSize=minClusterSize,
@@ -287,9 +309,7 @@ def dynamic_tree_cut(
 
     import dynamicTreeCut as _dtc
 
-    _func = _dtc.cutreeHybrid
-    if "df_apply" not in _func.__globals__:
-        _func.__globals__["df_apply"] = _dtc.df_apply
+    _func = _prepare_dynamic_tree_cut(_dtc)
     distM = merge_obj.get("distM")
     kwargs = dict(
         deepSplit=deepSplit,
