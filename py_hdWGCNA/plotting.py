@@ -837,7 +837,7 @@ def plot_kmes(
         if len(kme_cols) > 0:
             kme_col = kme_cols[0]
         else:
-            kme_cols = [c for c in modules_df.columns if "kME" in c.lower()]
+            kme_cols = [c for c in modules_df.columns if "kme" in c.lower()]
             if len(kme_cols) > 0:
                 kme_col = kme_cols[0]
 
@@ -1246,7 +1246,7 @@ def module_network_plot(
     fig_dict = {}
     n_hubs_total = n_inner + n_outer
     hub_df = modules_df[modules_df["module"].isin(plot_mods)].copy()
-    kme_cols = [c for c in hub_df.columns if "kME" in c.lower()]
+    kme_cols = [c for c in hub_df.columns if c.lower().startswith("kme")]
     if kme_cols:
         # Rank each module's genes by that module's OWN kME_<module> column
         # (fall back to the first kME column if a per-module one is missing),
@@ -1458,7 +1458,7 @@ def hub_gene_network_plot(
         if kme_col in mod_df.columns:
             mod_df = mod_df.nlargest(n_hubs, columns=kme_col)
         else:
-            kme_cols = [c for c in mod_df.columns if "kME" in c.lower()]
+            kme_cols = [c for c in mod_df.columns if "kme" in c.lower()]
             if kme_cols:
                 mod_df = mod_df.nlargest(n_hubs, columns=kme_cols[0])
             else:
@@ -1763,7 +1763,7 @@ def module_umap_plot(
         if kme_col in mod_df.columns:
             mod_df = mod_df.nlargest(label_hubs, columns=kme_col)
         else:
-            alt_kme = [c for c in mod_df.columns if "kME" in c.lower()]
+            alt_kme = [c for c in mod_df.columns if "kme" in c.lower()]
             if alt_kme:
                 mod_df = mod_df.nlargest(label_hubs, columns=alt_kme[0])
         hub_list[cur_mod] = mod_df["gene_name"].values[:label_hubs].tolist()
@@ -1785,7 +1785,7 @@ def module_umap_plot(
     gene_name_to_module = dict(zip(modules_df["gene_name"], modules_df["module"]))
 
     gene_name_to_kme = {}
-    kme_cols = [c for c in modules_df.columns if "kME" in c.lower()]
+    kme_cols = [c for c in modules_df.columns if "kme" in c.lower()]
     for _, row in modules_df.iterrows():
         gn = row["gene_name"]
         mod = row.get("module", "")
@@ -2957,7 +2957,7 @@ def compute_module_umap(
         mod_df = working_modules[working_modules["module"] == cur_mod].copy()
         kme_col = f"kME_{cur_mod}"
         if kme_col not in mod_df.columns:
-            kme_cols = [c for c in mod_df.columns if "kME" in c.lower()]
+            kme_cols = [c for c in mod_df.columns if "kme" in c.lower()]
             if kme_cols:
                 kme_col = kme_cols[0]
             else:
@@ -3038,7 +3038,7 @@ def compute_module_umap(
         cur = working_modules[working_modules["module"] == cur_mod].copy()
         kme_col = f"kME_{cur_mod}"
         if kme_col not in cur.columns:
-            kme_cols_alt = [c for c in cur.columns if "kME" in c.lower()]
+            kme_cols_alt = [c for c in cur.columns if "kme" in c.lower()]
             if kme_cols_alt:
                 kme_col = kme_cols_alt[0]
             else:
