@@ -61,3 +61,11 @@ filterwarnings = [
     "ignore::FutureWarning",
     "ignore::RuntimeWarning",
 ]
+
+[tool.ruff.lint]
+# Pin the lint rule set to the pre-0.16 ruff defaults. ruff 0.16.0 (2026-07-23)
+# expanded the default selection from 59 to 413 rules, which flagged ~400
+# pre-existing, mostly stylistic findings (RUF013, UP006, I001, BLE001, ...) and
+# broke CI even though no code had changed. This is the migration snippet from
+# https://astral.sh/blog/ruff-v0.16.0. Widen deliberately in a dedicated PR.
+select = ["E4", "E7", "E9", "F"]
